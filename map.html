@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>급똥방지패치</title>
+    <!-- OpenLayers CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.4.0/ol.css">
+    <!-- OpenLayers JS -->
+    <script src="https://cdn.jsdelivr.net/npm/ol@7.4.0/dist/ol.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-sha256/build/sha256.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Header styles */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between; /* Space between text and button */
+            padding: 10px 20px;
+            background-color: #f8f9fa; /* Light gray background */
+            border-bottom: 1px solid #ddd; /* Subtle bottom border */
+            font-size: 16px;
+            font-weight: bold;
+            box-sizing: border-box; /* Include padding and border in width calculation */
+        }
+
+        .header span {
+            margin: 0;
+            color: #333; /* Dark gray text */
+        }
+
+        .header button {
+            padding: 8px 16px;
+            background-color: #007bff; /* Bootstrap blue */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .header button:hover {
+            background-color: #0056b3; /* Darker blue on hover */
+        }
+
+        /* Map styles */
+        #map {
+            width: 100%;
+            height: calc(100vh - 75px); /* Adjust map height to leave space for header */
+        }
+
+
+        .marker {
+            width: 10px;
+            height: 10px;
+            background-color: red;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+        }
+
+        .marker-green {
+            width: 15px;
+            height: 15px;
+            background-color: green;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+        }
+
+        .popup {
+            background: white;
+            padding: 10px;
+            border: 1px solid black;
+            border-radius: 5px;
+            font-size: 12px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+
+        .popup .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: transparent;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+            color: black;
+        }
+
+        .popup .close-btn:hover {
+            color: red;
+        }
+
+        .footer {
+            display: flex;
+            justify-content: center; /* Center the content horizontally */
+            align-items: center;    /* Center the content vertically */
+            position: fixed;        /* Fix at the bottom */
+            bottom: 0;
+            width: 100%;
+            height: 20px; /* Increased height for the logo */
+            background-color: #f8f9fa; /* Light gray background */
+            border-top: 1px solid #ddd; /* Subtle top border */
+            box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+        }
+
+        .footer a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .footer img {
+            width: 20px; /* Set the logo size */
+            height: 20px;
+            margin-right: 8px; /* Optional spacing */
+        }
+
+        .footer span {
+            font-size: 14px;
+            color: #555; /* Dark gray text */
+            font-weight: bold;
+        }
+
+        .password-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100vh;
+            background-color: #f8f9fa;
+        }
+
+        .password-container input {
+            padding: 10px;
+            font-size: 16px;
+            margin-bottom: 10px;
+            width: 200px;
+        }
+
+        .password-container button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .password-container button:hover {
+            background-color: #0056b3;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Password Protection -->
+    <div class="password-container">
+        <h2>지도에 접근하려면 비밀번호를 입력하세요</h2>
+        <input id="password-input" type="password" placeholder="비밀번호를 입력하세요">
+        <button id="submit-password">확인</button>
+        <p id="error-message" style="color: red; display: none;">비밀번호가 틀렸습니다!</p>
+    </div>
+    <div id="map" style="display: none;">
+        <!-- Header -->
+        <div class="header" style="display: none;">
+            <span>급똥방지패치</span>
+            <button id="find-location" type="button">가까운 변소 찾기</button>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Correct password
+            const hashedPassword = "1c0499527d85cce090bc770140b4f12fd66cc5fa64d8926cd99e3b674e663445"; // Set your desired password here
+
+            // Elements
+            const passwordInput = document.getElementById('password-input');
+            const submitButton = document.getElementById('submit-password');
+            const errorMessage = document.getElementById('error-message');
+            const passwordContainer = document.querySelector('.password-container');
+            const mapDiv = document.getElementById('map');
+            const header = document.querySelector('.header');
+
+            // Add event listener to the submit button
+            function handlePasswordSubmit() {
+                const enteredPassword = passwordInput.value;
+                const hashedEnteredPassword = sha256(enteredPassword);
+
+                    if (hashedEnteredPassword === hashedPassword) {
+                        console.log("접속...");
+                        // If password is correct, hide the password input and show the map
+                        passwordContainer.style.display = 'none';
+                        mapDiv.style.display = 'block';
+                        header.style.display = 'flex';
+
+                        // Initialize the map
+                        const map = new ol.Map({
+                            target: 'map',
+                            layers: [
+                                new ol.layer.Tile({
+                                    source: new ol.source.OSM()
+                                })
+                            ],
+                            view: new ol.View({
+                                center: ol.proj.fromLonLat([126.9780, 37.5665]), // Centered at Seoul
+                                zoom: 13
+                            })
+                        });
+                        // Marker data: [longitude, latitude, label, info]
+                        var markerData = [
+                            { coords: [126.7424296, 37.5217878], label: "삼산프라자", info: "피자마루 1층 [PW:1313]" }, 
+                            { coords: [126.743399, 37.521817], label: "로얄프라자", info: "버무리 1층 [PW:0123]" },
+                            { coords: [126.742625, 37.520752], label: "삼산동 388-31", info: "이자카야 쇼쇼 [PW:9988]" },
+                            { coords: [126.744016, 37.520093], label: "미래타운4단지 상가", info: "GS25 부평미래타운점 [PW:4321]" },
+                            { coords: [126.738125, 37.519485], label: "자미당", info: "자미당 [PW:3456, 5678]" },
+                            { coords: [126.744998, 37.519778], label: "피플버거", info: "피플버거 [PW:1628]" },
+                            { coords: [126.735159, 37.508094], label: "대상프라자", info: "삼산동460-2 [PW:5678]" },
+                            { coords: [126.745356, 37.520727], label: "미래타워", info: "세븐일레븐 삼산미래타운점 [PW:1234]" },
+                            { coords: [126.742887, 37.519691], label: "삼산동 395-6", info: "토부리 [PW:2833(남자), 7698(여자)]" }
+                        ];
+                        // Popup overlay
+                        var popupElement = document.createElement('div');
+                        popupElement.className = 'popup';
+                        var popupOverlay = new ol.Overlay({
+                            element: popupElement,
+                            positioning: 'bottom-center',
+                            stopEvent: true,
+                            offset: [0, -10]
+                        });
+                        map.addOverlay(popupOverlay);
+
+                        // Function to add a marker
+                        function addMarker(coords, label, info, isGreen = false) {
+                            var markerElement = document.createElement('div');
+                            markerElement.className = isGreen ? 'marker-green' : 'marker';
+
+                            var marker = new ol.Overlay({
+                                position: ol.proj.fromLonLat(coords),
+                                positioning: 'center-center',
+                                element: markerElement,
+                                stopEvent: false
+                            });
+
+                            map.addOverlay(marker);
+
+                            // Add click event to the marker
+                            markerElement.addEventListener('click', function () {
+                                // Add content to the popup
+                                popupElement.innerHTML = `
+                                    <button class="close-btn">×</button>
+                                    <b>${label}</b><br>상세정보: ${info || ''}
+                                `;
+                                popupOverlay.setPosition(ol.proj.fromLonLat(coords));
+
+                                // Add close button event
+                                var closeButton = popupElement.querySelector('.close-btn');
+                                closeButton.addEventListener('click', function () {
+                                    popupOverlay.setPosition(undefined);
+                                });
+                            });
+                        }
+
+                        // Add markers from the data
+                        markerData.forEach(data => {
+                            addMarker(data.coords, data.label, data.info);
+                        });
+
+                        // Close popup on map click
+                        map.on('click', function () {
+                            popupOverlay.setPosition(undefined);
+                        });
+
+                        // Find My Location button click event
+                        document.getElementById('find-location').addEventListener('click', function () {
+                            if (navigator.geolocation) {
+                                navigator.geolocation.getCurrentPosition(
+                                    function (position) {
+                                        var userCoords = [position.coords.longitude, position.coords.latitude];
+                                        map.getView().setCenter(ol.proj.fromLonLat(userCoords)); // Center the map to the user's location
+                                        map.getView().setZoom(15); // Zoom into the user's location
+
+                                        // Add green marker at user's location
+                                        addMarker(userCoords, "내 위치", null, true);
+                                    },
+                                    function (error) {
+                                        alert("위치를 가져올 수 없습니다: " + error.message);
+                                    }
+                                );
+                            } else {
+                                alert("이 브라우저는 Geolocation을 지원하지 않습니다.");
+                            }
+                        });
+                } else {
+                    // Show error message if the password is incorrect
+                    errorMessage.style.display = 'block';
+                }
+            }
+            // Add event listener to the submit button
+            submitButton.addEventListener('click', handlePasswordSubmit);
+
+            // Add event listener to the input field for Enter key
+            passwordInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    handlePasswordSubmit(); // Call the same function as the button
+                }
+            });
+        });
+    </script>
+</body>
+</html>
