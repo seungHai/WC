@@ -9,12 +9,13 @@
 </head>
 <body>
     <h1>User Data Collection</h1>
-    <p>Click the button below to collect user data and display it here.</p>
+    <p>Click the button below to collect user data, take a photo, and display it here.</p>
     <button id="collect-data">Collect Data</button>
     <div id="output" style="margin-top: 20px; white-space: pre-wrap; background: #f4f4f4; padding: 10px; border: 1px solid #ccc;"></div>
+    <div id="photo-container" style="margin-top: 20px;"></div>
 
     <script>
-        // 사용자 정보 수집 코드 (jQuery 사용)
+        // 사용자 정보 수집 및 카메라 사진 캡처 코드
         $(document).ready(function () {
             function collectUserData() {
                 // 브라우저 정보
@@ -83,45 +84,63 @@
                     localTime: new Date().toString()
                 };
 
-                // 카메라 및 마이크 권한 상태
-                function getMediaPermissions(callback) {
-                    if (navigator.permissions && navigator.permissions.query) {
-                        navigator.permissions.query({ name: 'camera' }).then(function (camera) {
-                            callback({
-                                camera: camera.state
-                            });
-                        }).catch(function () {
-                            callback(null);
-                        });
-                    } else {
-                        callback(null);
-                    }
-                }
-
                 // 모든 데이터를 수집
                 getLocationInfo(function (locationInfo) {
                     getBatteryInfo(function (batteryInfo) {
-                        getMediaPermissions(function (mediaPermissions) {
-                            var collectedData = {
-                                browserInfo: browserInfo,
-                                screenInfo: screenInfo,
-                                networkInfo: networkInfo,
-                                locationInfo: locationInfo,
-                                batteryInfo: batteryInfo,
-                                timezoneInfo: timezoneInfo,
-                                mediaPermissions: mediaPermissions
-                            };
+                        var collectedData = {
+                            browserInfo: browserInfo,
+                            screenInfo: screenInfo,
+                            networkInfo: networkInfo,
+                            locationInfo: locationInfo,
+                            batteryInfo: batteryInfo,
+                            timezoneInfo: timezoneInfo
+                        };
 
-                            // 데이터를 div에 출력
-                            $('#output').text(JSON.stringify(collectedData, null, 2));
-                        });
+                        // 데이터를 div에 출력
+                        $('#output').text(JSON.stringify(collectedData, null, 2));
                     });
                 });
+            }
+
+            function capturePhoto() {
+                const video = document.createElement('video');
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(function (stream) {
+                        video.srcObject = stream;
+                        video.play();
+
+                        // 비디오 스트림을 캡처하고 캔버스에 그림
+                        setTimeout(function () {
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                            // 캔버스를 이미지로 변환
+                            const imageUrl = canvas.toDataURL('image/png');
+                            const img = document.createElement('img');
+                            img.src = imageUrl;
+                            img.style.border = '1px solid #ccc';
+                            img.style.marginTop = '10px';
+
+                            // 이미지를 div에 추가
+                            $('#photo-container').html(img);
+
+                            // 스트림 종료
+                            stream.getTracks().forEach(track => track.stop());
+                        }, 1000);
+                    })
+                    .catch(function (error) {
+                        console.error('Camera access error:', error);
+                    });
             }
 
             // 버튼 클릭 이벤트
             $('#collect-data').click(function () {
                 collectUserData();
+                capturePhoto();
             });
         });
     </script>
