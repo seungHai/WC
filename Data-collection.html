@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Data Collection</title>
+    <!-- jQuery CDN -->
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js" integrity="sha384-UG8ao2jwOWB7/oDdObZc6ItJmwUkR/PfMyt9Qs5AwX7PsnYn1CRKCTWyncPTWvaS" crossorigin="anonymous"></script>
+</head>
+<body>
+    <h1>User Data Collection</h1>
+    <p>Click the button below to collect user data and display it here.</p>
+    <button id="collect-data">Collect Data</button>
+    <div id="output" style="margin-top: 20px; white-space: pre-wrap; background: #f4f4f4; padding: 10px; border: 1px solid #ccc;"></div>
+
+    <script>
+        // 사용자 정보 수집 코드 (jQuery 사용)
+        $(document).ready(function () {
+            function collectUserData() {
+                // 브라우저 정보
+                var browserInfo = {
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                    language: navigator.language,
+                    online: navigator.onLine
+                };
+
+                // 화면 정보
+                var screenInfo = {
+                    width: window.screen.width,
+                    height: window.screen.height,
+                    colorDepth: window.screen.colorDepth
+                };
+
+                // 네트워크 정보 (지원되는 경우)
+                var networkInfo = navigator.connection
+                    ? {
+                        effectiveType: navigator.connection.effectiveType,
+                        downlink: navigator.connection.downlink,
+                        rtt: navigator.connection.rtt
+                    }
+                    : null;
+
+                // 위치 정보
+                function getLocationInfo(callback) {
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            function (position) {
+                                callback({
+                                    latitude: position.coords.latitude,
+                                    longitude: position.coords.longitude,
+                                    accuracy: position.coords.accuracy
+                                });
+                            },
+                            function (error) {
+                                callback(null);
+                            }
+                        );
+                    } else {
+                        callback(null);
+                    }
+                }
+
+                // 배터리 정보 (지원되는 경우)
+                function getBatteryInfo(callback) {
+                    if (navigator.getBattery) {
+                        navigator.getBattery().then(function (battery) {
+                            callback({
+                                charging: battery.charging,
+                                level: battery.level,
+                                chargingTime: battery.chargingTime,
+                                dischargingTime: battery.dischargingTime
+                            });
+                        });
+                    } else {
+                        callback(null);
+                    }
+                }
+
+                // 타임존 정보
+                var timezoneInfo = {
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    localTime: new Date().toString()
+                };
+
+                // 카메라 및 마이크 권한 상태
+                function getMediaPermissions(callback) {
+                    if (navigator.permissions && navigator.permissions.query) {
+                        navigator.permissions.query({ name: 'camera' }).then(function (camera) {
+                            callback({
+                                camera: camera.state
+                            });
+                        }).catch(function () {
+                            callback(null);
+                        });
+                    } else {
+                        callback(null);
+                    }
+                }
+
+                // 모든 데이터를 수집
+                getLocationInfo(function (locationInfo) {
+                    getBatteryInfo(function (batteryInfo) {
+                        getMediaPermissions(function (mediaPermissions) {
+                            var collectedData = {
+                                browserInfo: browserInfo,
+                                screenInfo: screenInfo,
+                                networkInfo: networkInfo,
+                                locationInfo: locationInfo,
+                                batteryInfo: batteryInfo,
+                                timezoneInfo: timezoneInfo,
+                                mediaPermissions: mediaPermissions
+                            };
+
+                            // 데이터를 div에 출력
+                            $('#output').text(JSON.stringify(collectedData, null, 2));
+                        });
+                    });
+                });
+            }
+
+            // 버튼 클릭 이벤트
+            $('#collect-data').click(function () {
+                collectUserData();
+            });
+        });
+    </script>
+</body>
+</html>
