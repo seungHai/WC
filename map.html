@@ -187,7 +187,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             // Correct password
-            const hashedPassword = "1c0499527d85cce090bc770140b4f12fd66cc5fa64d8926cd99e3b674e663445"; // Set your desired password here
+            const hashedPassword = "1c0499527d85cce090bc770140b4f12fd66cc5fa64d8926cd99e3b674e663445";
 
             // Elements
             const passwordInput = document.getElementById('password-input');
@@ -204,7 +204,6 @@
 
                     if (hashedEnteredPassword === hashedPassword) {
                         console.log("접속...");
-                        // If password is correct, hide the password input and show the map
                         passwordContainer.style.display = 'none';
                         mapDiv.style.display = 'block';
                         header.style.display = 'flex';
@@ -218,7 +217,7 @@
                                 })
                             ],
                             view: new ol.View({
-                                center: ol.proj.fromLonLat([126.9780, 37.5665]), // Centered at Seoul
+                                center: ol.proj.fromLonLat([126.9780, 37.5665]), 
                                 zoom: 13
                             })
                         });
