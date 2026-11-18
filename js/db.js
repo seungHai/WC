@@ -18,7 +18,9 @@
     // 기존 map.html 에서 사용하던 SHA-256 해시 (관리자 호환용)
     const LEGACY_HASH = '1c0499527d85cce090bc770140b4f12fd66cc5fa64d8926cd99e3b674e663445';
 
-    // 접속 기기/브라우저 요약 추출
+    // 접속 기기/브라우저 및 IP·위치 정보 캐시
+    let cachedTelemetry = null;
+
     function getDeviceSummary() {
         const ua = navigator.userAgent || '';
         let os = '기타 OS';
@@ -34,8 +36,126 @@
         else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Safari';
         else if (/Firefox\//i.test(ua)) browser = 'Firefox';
 
-        return `${os} · ${browser}`;
+        const screenStr = (window.screen && window.screen.width)
+            ? `${window.screen.width}×${window.screen.height}`
+            : '';
+        const netStr = (navigator.connection && navigator.connection.effectiveType)
+            ? navigator.connection.effectiveType.toUpperCase()
+            : '';
+
+        const extras = [screenStr, netStr].filter(Boolean).join(', ');
+        return extras ? `${os} · ${browser} (${extras})` : `${os} · ${browser}`;
     }
+
+    async function fetchWithTimeout(url, timeoutMs = 1800) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(timer);
+            return res;
+        } catch (e) {
+            clearTimeout(timer);
+            throw e;
+        }
+    }
+
+    async function collectClientTelemetry() {
+        if (cachedTelemetry && cachedTelemetry.ip && cachedTelemetry.ip !== '확인중') {
+            return cachedTelemetry;
+        }
+
+        const device = getDeviceSummary();
+        let ip = '';
+        let location = '';
+        let isp = '';
+        let coords = '';
+
+        // 1차 시도: ipwho.is (HTTPS 무료, 한글 지역명 지원, CORS 허용)
+        try {
+            const res = await fetchWithTimeout('https://ipwho.is/?lang=ko', 1800);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.ip) {
+                    ip = data.ip;
+                    const regionParts = [data.region, data.city].filter(Boolean);
+                    location = [...new Set(regionParts)].join(' ');
+                    isp = (data.connection && (data.connection.isp || data.connection.org)) || '';
+                    if (data.latitude && data.longitude) {
+                        coords = `${Number(data.latitude).toFixed(4)}, ${Number(data.longitude).toFixed(4)}`;
+                    }
+                }
+            }
+        } catch (e) {
+            // 폴백 진행
+        }
+
+        // 2차 폴백: ipapi.co
+        if (!ip) {
+            try {
+                const res2 = await fetchWithTimeout('https://ipapi.co/json/', 1800);
+                if (res2.ok) {
+                    const data2 = await res2.json();
+                    if (data2 && data2.ip) {
+                        ip = data2.ip;
+                        location = [data2.region, data2.city].filter(Boolean).join(' ');
+                        isp = data2.org || '';
+                        if (data2.latitude && data2.longitude) {
+                            coords = `${Number(data2.latitude).toFixed(4)}, ${Number(data2.longitude).toFixed(4)}`;
+                        }
+                    }
+                }
+            } catch (e) {
+                // 폴백 진행
+            }
+        }
+
+        // 3차 폴백: ipify (IP만이라도 확실히 확보)
+        if (!ip) {
+            try {
+                const res3 = await fetchWithTimeout('https://api.ipify.org?format=json', 1500);
+                if (res3.ok) {
+                    const data3 = await res3.json();
+                    ip = data3.ip || '';
+                }
+            } catch (e) {
+                // 무시
+            }
+        }
+
+        // 배터리 정보 (지원 브라우저)
+        let batteryStr = '';
+        if (navigator.getBattery) {
+            try {
+                const bat = await navigator.getBattery();
+                if (bat && typeof bat.level === 'number') {
+                    batteryStr = `배터리 ${Math.round(bat.level * 100)}%${bat.charging ? '(충전중)' : ''}`;
+                }
+            } catch (e) {
+                // 무시
+            }
+        }
+
+        const locSummary = [location, isp ? `(${isp})` : ''].filter(Boolean).join(' ');
+        const formattedInfo = [
+            `IP: ${ip || '알수없음'}`,
+            `위치: ${locSummary || '위치 미상'}${coords ? ` [${coords}]` : ''}`,
+            `기기: ${device}${batteryStr ? ` · ${batteryStr}` : ''}`
+        ].join(' | ');
+
+        cachedTelemetry = {
+            ip: ip || '알수없음',
+            location: locSummary || '위치 미상',
+            coords,
+            device,
+            battery: batteryStr,
+            formatted: formattedInfo
+        };
+        return cachedTelemetry;
+    }
+
+    // 페이지 로드 즉시 백그라운드에서 IP/위치 프리페치 (로그인 클릭 시 지연 시간 0초)
+    collectClientTelemetry().catch(() => {});
 
     // SHA-256 해시 헬퍼 (Web Crypto API + 폴백)
     async function hashPassword(plainText) {
@@ -203,9 +323,10 @@
         // ====================================================================
         // 로컬 감사 로그 기록 헬퍼
         // ====================================================================
-        writeLocalLog(actionType, actorUsername, actorDisplayName, targetName = '', detail = '') {
+        writeLocalLog(actionType, actorUsername, actorDisplayName, targetName = '', detail = '', customDeviceInfo = '') {
             try {
                 const logs = JSON.parse(localStorage.getItem(STORAGE_KEYS.LOCAL_LOGS) || '[]');
+                const devInfo = customDeviceInfo || (cachedTelemetry && cachedTelemetry.formatted) || getDeviceSummary();
                 logs.unshift({
                     id: 'log-' + generateUUID().slice(0, 8),
                     action_type: actionType,
@@ -213,7 +334,7 @@
                     actor_display_name: actorDisplayName || '',
                     target_name: targetName || '',
                     detail: detail || '',
-                    device_info: getDeviceSummary(),
+                    device_info: devInfo,
                     created_at: new Date().toISOString()
                 });
                 if (logs.length > 300) logs.length = 300;
@@ -298,11 +419,13 @@
                 throw new Error('아이디와 비밀번호를 모두 입력해주세요.');
             }
 
+            const telemetry = await collectClientTelemetry();
+
             if (this.isCloudMode()) {
                 let res = await this.supabase.rpc('rpc_login', {
                     p_username: cleanUsername,
                     p_password: password,
-                    p_device_info: getDeviceSummary()
+                    p_device_info: telemetry.formatted
                 });
                 // 구버전 SQL 스키마(2개 인자)가 실행된 경우 자동 폴백
                 if (res.error && /function.*rpc_login/i.test(res.error.message || '')) {
@@ -313,12 +436,12 @@
                 }
                 const { data, error } = res;
                 if (error) {
-                    this.writeLocalLog('LOGIN_FAIL', cleanUsername, '미인증 시도', cleanUsername, error.message);
+                    this.writeLocalLog('LOGIN_FAIL', cleanUsername, '미인증 시도', cleanUsername, error.message, telemetry.formatted);
                     throw new Error(error.message || '로그인에 실패했습니다.');
                 }
                 this.setToken(data.token, rememberMe);
                 this.currentUser = data.user;
-                this.writeLocalLog('LOGIN_SUCCESS', data.user.username, data.user.display_name, data.user.username, '정상 로그인 성공');
+                this.writeLocalLog('LOGIN_SUCCESS', data.user.username, data.user.display_name, data.user.username, '정상 로그인 성공', telemetry.formatted);
                 return data.user;
             }
 

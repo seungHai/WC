@@ -98,7 +98,7 @@ END;
 $$;
 
 -- ============================================================================
--- 내부 헬퍼 함수 2: 감사 로그 기록
+-- 내부 헬퍼 함수 2: 감사 로그 기록 (클라이언트 정보 + 서버 헤더 IP 자동 추출)
 -- ============================================================================
 CREATE OR REPLACE FUNCTION public.internal_write_log(
     p_action_type TEXT,
@@ -113,7 +113,31 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, extensions
 AS $$
+DECLARE
+    v_headers JSONB;
+    v_server_ip TEXT;
+    v_final_device TEXT;
 BEGIN
+    v_final_device := COALESCE(trim(p_device_info), '');
+
+    BEGIN
+        v_headers := NULLIF(current_setting('request.headers', true), '')::jsonb;
+        v_server_ip := COALESCE(
+            v_headers->>'cf-connecting-ip',
+            split_part(v_headers->>'x-forwarded-for', ',', 1),
+            v_headers->>'x-real-ip',
+            ''
+        );
+    EXCEPTION WHEN OTHERS THEN
+        v_server_ip := '';
+    END;
+
+    IF v_final_device = '' AND v_server_ip <> '' THEN
+        v_final_device := 'IP: ' || v_server_ip;
+    ELSIF v_server_ip <> '' AND position('IP: 알수없음' in v_final_device) > 0 THEN
+        v_final_device := replace(v_final_device, 'IP: 알수없음', 'IP: ' || v_server_ip);
+    END IF;
+
     INSERT INTO public.audit_logs (
         action_type, actor_username, actor_display_name, target_name, detail, device_info
     ) VALUES (
@@ -122,7 +146,7 @@ BEGIN
         COALESCE(p_actor_display_name, ''),
         COALESCE(p_target_name, ''),
         COALESCE(p_detail, ''),
-        COALESCE(p_device_info, '')
+        v_final_device
     );
 END;
 $$;

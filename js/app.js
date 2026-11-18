@@ -1620,21 +1620,57 @@
                 return;
             }
 
-            tbody.innerHTML = filtered.map(log => {
+            tbody.innerHTML = filtered.map((log, idx) => {
                 const actorText = log.actor_display_name
                     ? `${log.actor_username} (${log.actor_display_name})`
                     : log.actor_username;
+
+                // device_info ("IP: xxx | 위치: xxx | 기기: xxx") 파싱
+                const rawDev = log.device_info || '';
+                let ipLocText = '-';
+                let devEnvText = rawDev || '-';
+
+                if (rawDev.includes('|')) {
+                    const parts = rawDev.split('|').map(s => s.trim());
+                    const ipPart = (parts.find(p => p.startsWith('IP:')) || '').replace(/^IP:\s*/, '');
+                    const locPart = (parts.find(p => p.startsWith('위치:')) || '').replace(/^위치:\s*/, '');
+                    const devPart = (parts.find(p => p.startsWith('기기:')) || '').replace(/^기기:\s*/, '');
+                    ipLocText = [ipPart ? `🌐 ${ipPart}` : '', locPart ? `📍 ${locPart}` : ''].filter(Boolean).join(' · ') || '-';
+                    devEnvText = devPart || '-';
+                } else if (rawDev.startsWith('IP:')) {
+                    ipLocText = `🌐 ${rawDev.replace(/^IP:\s*/, '')}`;
+                    devEnvText = '-';
+                }
+
+                const summaryDetail = [log.target_name, log.detail].filter(Boolean).join(' - ') || '-';
+
                 return `
-                    <tr>
+                    <tr data-log-idx="${idx}" style="cursor:pointer;" title="클릭하면 전체 접속 IP·위치·단말기 상세 정보를 봅니다">
                         <td style="font-size:12px; color:var(--text-secondary);">${escapeHtml(formatKoreanDateTime(log.created_at))}</td>
                         <td>${getLogBadgeHtml(log.action_type)}</td>
                         <td title="${escapeHtml(actorText)}"><b>${escapeHtml(actorText)}</b></td>
-                        <td title="${escapeHtml(log.target_name || '-')}">${escapeHtml(log.target_name || '-')}</td>
-                        <td title="${escapeHtml(log.detail || '-')}">${escapeHtml(log.detail || '-')}</td>
-                        <td style="font-size:12px; color:var(--text-secondary);" title="${escapeHtml(log.device_info || '-')}">${escapeHtml(log.device_info || '-')}</td>
+                        <td style="font-weight:700; color:var(--accent);" title="${escapeHtml(ipLocText)}">${escapeHtml(ipLocText)}</td>
+                        <td style="font-size:12px; color:var(--text-secondary);" title="${escapeHtml(devEnvText)}">${escapeHtml(devEnvText)}</td>
+                        <td title="${escapeHtml(summaryDetail)}">${escapeHtml(summaryDetail)}</td>
                     </tr>
                 `;
             }).join('');
+
+            tbody.querySelectorAll('tr[data-log-idx]').forEach(row => {
+                row.onclick = () => {
+                    const log = filtered[Number(row.getAttribute('data-log-idx'))];
+                    if (!log) return;
+                    alert(
+                        `[접속 · 활동 상세 로그]\n\n` +
+                        `• 일시: ${formatKoreanDateTime(log.created_at)}\n` +
+                        `• 구분: ${log.action_type}\n` +
+                        `• 계정: ${log.actor_username} (${log.actor_display_name || '-'})\n` +
+                        `• 대상: ${log.target_name || '-'}\n` +
+                        `• 내역: ${log.detail || '-'}\n` +
+                        `• 접속환경(IP/위치/기기):\n  ${log.device_info || '-'}`
+                    );
+                };
+            });
         } catch (err) {
             tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger); padding:16px;">${escapeHtml(err.message)}</td></tr>`;
         }
