@@ -121,7 +121,7 @@
                         <strong id="user-display-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">회원님</strong>
                     </div>
                     <div class="user-info-actions">
-                        <button type="button" id="btn-change-my-pw" class="text-link-btn">비번변경</button>
+                        <button type="button" id="btn-change-my-pw" class="text-link-btn">비밀번호 변경</button>
                         <span style="color:var(--border-color);">|</span>
                         <button type="button" id="btn-logout" class="text-link-btn">계정전환/로그아웃</button>
                     </div>
@@ -171,6 +171,12 @@
                     <button type="button" class="region-btn" data-map-style="detailed">🏪 상세상가</button>
                     <button type="button" class="region-btn" data-map-style="satellite">🛰️ 위성지도</button>
                 </div>
+            </div>
+
+            <!-- 우측 상단(지도 스타일 바 바로 아래) +- 확대/축소 버튼 -->
+            <div class="custom-zoom-controls">
+                <button type="button" id="btn-zoom-in" class="custom-zoom-btn" title="확대">+</button>
+                <button type="button" id="btn-zoom-out" class="custom-zoom-btn" title="축소">−</button>
             </div>
 
             <!-- 지도에서 위치 찍기 안내 배너 -->
@@ -250,11 +256,11 @@
                         <div class="form-grid" style="margin-bottom:0;">
                             <div class="form-field" style="margin-bottom:0;">
                                 <label for="wc-lat">위도 (Latitude)</label>
-                                <input id="wc-lat" type="number" step="any" required readonly>
+                                <input id="wc-lat" type="number" step="any" readonly required>
                             </div>
                             <div class="form-field" style="margin-bottom:0;">
                                 <label for="wc-lng">경도 (Longitude)</label>
-                                <input id="wc-lng" type="number" step="any" required readonly>
+                                <input id="wc-lng" type="number" step="any" readonly required>
                             </div>
                         </div>
                     </div>
@@ -464,8 +470,26 @@
                     </div>
                 </div>
 
-                <!-- 탭 4: Supabase 클라우드 DB 연동 설정 -->
+                <!-- 탭 4: 카카오맵 API 및 Supabase 클라우드 DB 연동 설정 -->
                 <div id="admin-tab-cloud" style="display: none;">
+                    <div class="admin-card-box">
+                        <div id="kakao-status-indicator" style="margin-bottom:8px;"></div>
+                        <p style="font-size:13px; color:var(--text-secondary); line-height:1.55; margin-bottom:12px;">
+                            <b>🟡 카카오맵(Kakao Maps) 베이스 지도 연동</b><br>
+                            1) <a href="https://developers.kakao.com/console/app" target="_blank" rel="noopener" style="color:var(--accent); font-weight:700;">Kakao Developers</a>에서 애플리케이션 생성 후 <b>앱 키 → JavaScript 키</b>를 복사하세요.<br>
+                            2) <b>플랫폼 → Web 플랫폼 등록</b>에 배포 도메인(<code>https://seunghai.github.io</code>)을 추가하고, 좌측 메뉴 <b>카카오맵 → 활성화 설정 ON</b>을 켜주세요.
+                        </p>
+                        <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+                            <div class="form-field" style="flex:1; min-width:240px; margin-bottom:0;">
+                                <label for="kakao-key-input">Kakao JavaScript 키</label>
+                                <input id="kakao-key-input" type="text" placeholder="32자리 영문+숫자 JavaScript 키 입력">
+                            </div>
+                            <button type="button" id="btn-save-kakao" class="icon-btn primary" style="height:40px; padding:0 16px;">
+                                🟡 카카오맵 적용
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="admin-card-box">
                         <div id="cloud-status-indicator" style="margin-bottom:10px;"></div>
                         <p style="font-size:13px; color:var(--text-secondary); line-height:1.55; margin-bottom:14px;">

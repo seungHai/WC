@@ -78,8 +78,9 @@ button, input, select, textarea {
     font-family: inherit;
 }
 
-/* 다크모드 시 지도 타일 눈부심 완화 */
-[data-theme="dark"] .ol-layer canvas {
+/* 다크모드 시 지도 타일 눈부심 완화 (카카오맵 및 기본 지도 공통) */
+[data-theme="dark"] .ol-layer canvas,
+[data-theme="dark"] #map > div > div > div > img {
     filter: brightness(0.84) contrast(1.08) saturate(0.88);
 }
 
@@ -821,47 +822,45 @@ button, input, select, textarea {
     flex-shrink: 0;
 }
 
-/* OpenLayers 기본 +- 줌 컨트롤을 우측 상단(일반지도/상세상가/위성지도 바로 아래)으로 이동 */
 .ol-zoom {
-    top: 66px !important;
-    right: 14px !important;
-    left: auto !important;
-    display: flex !important;
+    display: none !important;
+}
+
+/* 카카오맵 & 공통 +- 줌 컨트롤: 우측 상단(일반지도/하이브리드/스카이뷰 바로 아래) 배치 */
+.custom-zoom-controls {
+    position: absolute;
+    top: 66px;
+    right: 14px;
+    display: flex;
     flex-direction: column;
     gap: 6px;
-    background: transparent !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
     z-index: 20;
 }
 
-.ol-zoom .ol-zoom-in,
-.ol-zoom .ol-zoom-out {
-    width: 38px !important;
-    height: 38px !important;
-    margin: 0 !important;
-    border-radius: 11px !important;
-    border: 1px solid var(--border-color) !important;
-    background: var(--bg-glass) !important;
+.custom-zoom-btn {
+    width: 38px;
+    height: 38px;
+    margin: 0;
+    border-radius: 11px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-glass);
     backdrop-filter: blur(12px);
-    color: var(--text-primary) !important;
-    font-size: 20px !important;
-    font-weight: 800 !important;
-    line-height: 1 !important;
-    display: flex !important;
+    color: var(--text-primary);
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+    display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: var(--shadow-sm) !important;
+    box-shadow: var(--shadow-sm);
     transition: all 0.15s ease;
 }
 
-.ol-zoom .ol-zoom-in:hover,
-.ol-zoom .ol-zoom-out:hover {
-    background: var(--accent) !important;
-    color: #ffffff !important;
-    border-color: var(--accent) !important;
+.custom-zoom-btn:hover {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
 }
 
 /* 우측 하단 플로팅 액션 버튼들 */

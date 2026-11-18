@@ -10,6 +10,9 @@ window.WC_CONFIG = {
     APP_SUBTITLE: '프라이빗 화장실 위치 & 비밀번호 안내 서비스',
     APP_VERSION: '2.0.0',
 
+    // 카카오맵 JavaScript API 키 (Kakao Developers -> 내 애플리케이션 -> 앱 키 -> JavaScript 키)
+    KAKAO_MAP_APP_KEY: '49868bcb138f6bba2eb5dae6cc401445',
+
     // Supabase 연동 정보 (코드에 직접 입력 시 모든 접속자에게 즉시 적용됨)
     SUPABASE_URL: 'https://sgunezyuxfjfpwjmhxgs.supabase.co',
     SUPABASE_ANON_KEY: 'sb_publishable_fvjQmsGyc8RbQrnJQpiYbQ_sIiPHbFY',

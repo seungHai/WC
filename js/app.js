@@ -3,6 +3,8 @@
  */
 (function () {
     const state = {
+        engine: 'ol', // 'kakao' | 'ol'
+        kakaoMap: null,
         map: null,
         restrooms: [],
         filteredRestrooms: [],
@@ -164,18 +166,108 @@
         }
 
         // 지도 최초 초기화 및 리사이즈 보장
-        if (!state.map) {
-            initMap();
+        if (!state.kakaoMap && !state.map) {
+            await initMap();
         } else {
-            setTimeout(() => state.map.updateSize(), 60);
+            refreshMapSize();
         }
 
         await loadRestrooms();
     }
 
     // ========================================================================
-    // OpenLayers 지도 초기화 및 마커 렌더링 (OSM Access Blocked 원천 해결)
+    // 카카오맵(Kakao Maps SDK) 우선 초기화 + 폴백 하이브리드 지도 엔진
     // ========================================================================
+    function getKakaoAppKey() {
+        const saved = (localStorage.getItem('wc_kakao_app_key') || '').trim();
+        const cfg = (window.WC_CONFIG && window.WC_CONFIG.KAKAO_MAP_APP_KEY || '').trim();
+        return saved || cfg;
+    }
+
+    function refreshMapSize() {
+        setTimeout(() => {
+            if (state.engine === 'kakao' && state.kakaoMap) {
+                state.kakaoMap.relayout();
+            } else if (state.map) {
+                state.map.updateSize();
+            }
+        }, 60);
+    }
+
+    function getMapCenterLonLat() {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            const c = state.kakaoMap.getCenter();
+            return [c.getLng(), c.getLat()];
+        }
+        if (state.map) {
+            return ol.proj.toLonLat(state.map.getView().getCenter());
+        }
+        return (window.WC_CONFIG && window.WC_CONFIG.DEFAULT_CENTER) || [126.742887, 37.5205];
+    }
+
+    function getMapZoom() {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            return 20 - state.kakaoMap.getLevel();
+        }
+        if (state.map) {
+            return state.map.getView().getZoom() || 16;
+        }
+        return 16;
+    }
+
+    function moveMapTo(lng, lat, olZoom = 16) {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            const kakaoLevel = Math.max(1, Math.min(13, Math.round(20 - olZoom)));
+            const moveLatLon = new kakao.maps.LatLng(lat, lng);
+            state.kakaoMap.setLevel(kakaoLevel);
+            state.kakaoMap.panTo(moveLatLon);
+            return;
+        }
+        if (state.map) {
+            state.map.getView().animate({
+                center: ol.proj.fromLonLat([lng, lat]),
+                zoom: olZoom,
+                duration: 400
+            });
+        }
+    }
+
+    function zoomMapBy(delta) {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            const curLevel = state.kakaoMap.getLevel();
+            const nextLevel = Math.max(1, Math.min(13, curLevel - delta));
+            state.kakaoMap.setLevel(nextLevel, { animate: true });
+            return;
+        }
+        if (state.map) {
+            const curZoom = state.map.getView().getZoom() || 16;
+            state.map.getView().animate({
+                zoom: Math.max(7, Math.min(19, curZoom + delta)),
+                duration: 200
+            });
+        }
+    }
+
+    function loadKakaoSdkScript(appKey) {
+        return new Promise((resolve) => {
+            if (window.kakao && window.kakao.maps) {
+                window.kakao.maps.load(() => resolve(true));
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&libraries=services&autoload=false`;
+            script.onload = () => {
+                if (window.kakao && window.kakao.maps) {
+                    window.kakao.maps.load(() => resolve(true));
+                } else {
+                    resolve(false);
+                }
+            };
+            script.onerror = () => resolve(false);
+            document.head.appendChild(script);
+        });
+    }
+
     const MAP_TILE_SOURCES = {
         voyager: () => new ol.source.XYZ({
             url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
@@ -192,13 +284,59 @@
         })
     };
 
-    function initMap() {
+    async function initMap() {
         const mapEl = document.getElementById('map');
         if (!mapEl) return;
 
         const defaultCenter = (window.WC_CONFIG && window.WC_CONFIG.DEFAULT_CENTER) || [126.742887, 37.5205];
         const defaultZoom = (window.WC_CONFIG && window.WC_CONFIG.DEFAULT_ZOOM) || 16;
 
+        const kakaoKey = getKakaoAppKey();
+        if (kakaoKey && window.location.protocol !== 'file:') {
+            const loaded = await loadKakaoSdkScript(kakaoKey);
+            if (loaded && window.kakao && window.kakao.maps) {
+                try {
+                    mapEl.innerHTML = '';
+                    state.engine = 'kakao';
+                    const kakaoLevel = Math.max(1, Math.min(13, Math.round(20 - defaultZoom)));
+                    state.kakaoMap = new kakao.maps.Map(mapEl, {
+                        center: new kakao.maps.LatLng(defaultCenter[1], defaultCenter[0]),
+                        level: kakaoLevel
+                    });
+
+                    if (typeof ResizeObserver !== 'undefined') {
+                        const ro = new ResizeObserver(() => {
+                            if (state.kakaoMap) state.kakaoMap.relayout();
+                        });
+                        ro.observe(mapEl);
+                    }
+
+                    kakao.maps.event.addListener(state.kakaoMap, 'click', function (mouseEvent) {
+                        if (state.isPickingLocation) {
+                            const latlng = mouseEvent.latLng;
+                            finishLocationPicking(
+                                Number(latlng.getLng().toFixed(7)),
+                                Number(latlng.getLat().toFixed(7))
+                            );
+                        }
+                    });
+
+                    kakao.maps.event.addListener(state.kakaoMap, 'idle', function () {
+                        renderMapMarkers();
+                    });
+
+                    renderRegionBar();
+                    initMapStyleSwitcher();
+                    return;
+                } catch (err) {
+                    console.warn('카카오맵 초기화 실패, 기본 지도 엔진으로 폴백합니다:', err);
+                }
+            }
+        }
+
+        // 카카오 키 미입력 또는 로컬 file:// 프로토콜 접속 시 폴백 엔진 작동
+        state.engine = 'ol';
+        mapEl.innerHTML = '';
         state.baseTileLayer = new ol.layer.Tile({
             source: MAP_TILE_SOURCES.voyager()
         });
@@ -214,7 +352,6 @@
             })
         });
 
-        // 컨테이너 크기 변경 시 OpenLayers 캔버스 크기 자동 동기화
         if (typeof ResizeObserver !== 'undefined') {
             const ro = new ResizeObserver(() => {
                 if (state.map) state.map.updateSize();
@@ -225,7 +362,6 @@
             if (state.map) state.map.updateSize();
         }, 120);
 
-        // 지도 클릭 이벤트 (위치 찍기 모드)
         state.map.on('click', async function (evt) {
             const lonLat = ol.proj.toLonLat(evt.coordinate);
             const lng = Number(lonLat[0].toFixed(7));
@@ -237,7 +373,6 @@
             }
         });
 
-        // 줌/이동 완료 시 마커 클러스터링 및 라벨 겹침 회피 재계산
         state.map.on('moveend', function () {
             renderMapMarkers();
         });
@@ -250,14 +385,26 @@
         const switcher = document.getElementById('map-style-bar');
         if (!switcher) return;
         switcher.querySelectorAll('[data-map-style]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.onclick = () => {
                 const styleKey = btn.getAttribute('data-map-style');
+                switcher.querySelectorAll('[data-map-style]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                if (state.engine === 'kakao' && state.kakaoMap) {
+                    if (styleKey === 'voyager') {
+                        state.kakaoMap.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);
+                    } else if (styleKey === 'detailed') {
+                        state.kakaoMap.setMapTypeId(kakao.maps.MapTypeId.HYBRID);
+                    } else if (styleKey === 'satellite') {
+                        state.kakaoMap.setMapTypeId(kakao.maps.MapTypeId.SKYVIEW);
+                    }
+                    return;
+                }
+
                 if (MAP_TILE_SOURCES[styleKey] && state.baseTileLayer) {
                     state.baseTileLayer.setSource(MAP_TILE_SOURCES[styleKey]());
-                    switcher.querySelectorAll('[data-map-style]').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
                 }
-            });
+            };
         });
     }
 
@@ -284,7 +431,7 @@
             btn.addEventListener('click', () => {
                 const regionId = btn.getAttribute('data-region');
                 const region = window.WC_CONFIG.REGIONS.find(item => item.id === regionId);
-                if (!region || !state.map) return;
+                if (!region) return;
 
                 state.activeRegion = regionId;
                 recalculateDistancesAndFilter();
@@ -292,17 +439,9 @@
                 // 해당 지역에 마커가 있으면 첫 번째(또는 중심) 마커로 이동, 없으면 지역 기본 좌표로 이동
                 if (regionId !== 'all' && state.filteredRestrooms.length > 0) {
                     const target = state.filteredRestrooms[0];
-                    state.map.getView().animate({
-                        center: ol.proj.fromLonLat([target.lng, target.lat]),
-                        zoom: state.filteredRestrooms.length === 1 ? 16 : 15,
-                        duration: 420
-                    });
+                    moveMapTo(target.lng, target.lat, state.filteredRestrooms.length === 1 ? 16 : 15);
                 } else {
-                    state.map.getView().animate({
-                        center: ol.proj.fromLonLat(region.coords),
-                        zoom: region.zoom,
-                        duration: 420
-                    });
+                    moveMapTo(region.coords[0], region.coords[1], region.zoom);
                 }
             });
         });
@@ -546,32 +685,84 @@
         return xOverlap * yOverlap;
     }
 
-    function renderMapMarkers() {
-        if (!state.map) return;
-
-        // 기존 마커 제거
-        state.markerOverlays.forEach(ov => state.map.removeOverlay(ov));
+    function clearAllMarkerOverlays() {
+        state.markerOverlays.forEach(ov => {
+            if (state.engine === 'kakao' && typeof ov.setMap === 'function') {
+                ov.setMap(null);
+            } else if (state.map && typeof state.map.removeOverlay === 'function') {
+                state.map.removeOverlay(ov);
+            }
+        });
         state.markerOverlays = [];
+    }
+
+    function addOverlayAtLonLat(lng, lat, element) {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            const ov = new kakao.maps.CustomOverlay({
+                position: new kakao.maps.LatLng(lat, lng),
+                content: element,
+                xAnchor: 0.5,
+                yAnchor: 0.5,
+                clickable: true
+            });
+            ov.setMap(state.kakaoMap);
+            state.markerOverlays.push(ov);
+            return ov;
+        }
+        if (state.map) {
+            const ov = new ol.Overlay({
+                position: ol.proj.fromLonLat([lng, lat]),
+                positioning: 'center-center',
+                element,
+                stopEvent: true
+            });
+            state.map.addOverlay(ov);
+            state.markerOverlays.push(ov);
+            return ov;
+        }
+        return null;
+    }
+
+    function getScreenPixelFromLonLat(lng, lat) {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            const proj = state.kakaoMap.getProjection();
+            if (!proj) return null;
+            const pt = proj.containerPointFromCoords(new kakao.maps.LatLng(lat, lng));
+            return pt && !Number.isNaN(pt.x) ? [pt.x, pt.y] : null;
+        }
+        if (state.map) {
+            const coord = ol.proj.fromLonLat([lng, lat]);
+            return state.map.getPixelFromCoordinate(coord);
+        }
+        return null;
+    }
+
+    function renderMapMarkers() {
+        if (!state.kakaoMap && !state.map) return;
+
+        clearAllMarkerOverlays();
 
         if (state.filteredRestrooms.length === 0) return;
 
-        const zoom = state.map.getView().getZoom() || 16;
+        const zoom = getMapZoom();
 
         // 각 화장실의 화면 픽셀 좌표 계산
         const points = state.filteredRestrooms.map(item => {
-            const coord = ol.proj.fromLonLat([item.lng, item.lat]);
-            const pixel = state.map.getPixelFromCoordinate(coord);
+            const pixel = getScreenPixelFromLonLat(item.lng, item.lat);
             return {
                 item,
-                coord,
                 px: pixel ? pixel[0] : null,
                 py: pixel ? pixel[1] : null
             };
         });
 
-        // 아직 지도가 첫 렌더링 전이라 픽셀 좌표가 없으면 postrender에서 즉시 재실행
+        // 아직 지도가 첫 렌더링 전이라 픽셀 좌표가 없으면 잠시 후 재실행
         if (points.some(p => p.px === null || p.py === null)) {
-            state.map.once('postrender', () => renderMapMarkers());
+            if (state.engine === 'ol' && state.map) {
+                state.map.once('postrender', () => renderMapMarkers());
+            } else {
+                setTimeout(() => renderMapMarkers(), 100);
+            }
             return;
         }
 
@@ -632,28 +823,17 @@
 
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
-                state.map.getView().animate({
-                    center: ol.proj.fromLonLat([avgLng, avgLat]),
-                    zoom: Math.max(zoom + 2.2, 16.8),
-                    duration: 380
-                });
+                moveMapTo(avgLng, avgLat, Math.max(zoom + 2, 17));
             });
 
-            const overlay = new ol.Overlay({
-                position: ol.proj.fromLonLat([avgLng, avgLat]),
-                positioning: 'center-center',
-                element: el,
-                stopEvent: true
-            });
-            state.map.addOverlay(overlay);
-            state.markerOverlays.push(overlay);
+            addOverlayAtLonLat(avgLng, avgLat, el);
         });
 
         // 2. 개별 마커 생성 및 화면 픽셀 충돌 회피(Staggering) 배치
         const markerEntries = [];
 
         singlePoints.forEach(pt => {
-            const { item, coord, px, py } = pt;
+            const { item, px, py } = pt;
             const el = document.createElement('div');
             const isSelected = state.selectedId === item.id;
             el.className = [
@@ -681,15 +861,7 @@
                 selectRestroom(item.id, true);
             });
 
-            const overlay = new ol.Overlay({
-                position: coord,
-                positioning: 'center-center',
-                element: el,
-                stopEvent: true
-            });
-
-            state.map.addOverlay(overlay);
-            state.markerOverlays.push(overlay);
+            addOverlayAtLonLat(item.lng, item.lat, el);
 
             markerEntries.push({
                 item,
@@ -802,12 +974,8 @@
             cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
-        if (animateMap && state.map) {
-            state.map.getView().animate({
-                center: ol.proj.fromLonLat([item.lng, item.lat]),
-                zoom: Math.max(state.map.getView().getZoom() || 16, 17),
-                duration: 380
-            });
+        if (animateMap) {
+            moveMapTo(item.lng, item.lat, Math.max(getMapZoom(), 17));
         }
     }
 
@@ -941,8 +1109,7 @@
     }
 
     function fallbackToMapCenterNearest(noticeMsg) {
-        if (!state.map) return;
-        const centerLonLat = ol.proj.toLonLat(state.map.getView().getCenter());
+        const centerLonLat = getMapCenterLonLat();
         state.userLocation = [centerLonLat[0], centerLonLat[1]];
         placeUserGpsMarker(state.userLocation);
 
@@ -957,21 +1124,38 @@
     }
 
     function placeUserGpsMarker(coords) {
-        if (!state.map) return;
         if (state.userMarkerOverlay) {
-            state.map.removeOverlay(state.userMarkerOverlay);
+            if (state.engine === 'kakao' && typeof state.userMarkerOverlay.setMap === 'function') {
+                state.userMarkerOverlay.setMap(null);
+            } else if (state.map && typeof state.map.removeOverlay === 'function') {
+                state.map.removeOverlay(state.userMarkerOverlay);
+            }
+            state.userMarkerOverlay = null;
         }
         const el = document.createElement('div');
         el.className = 'user-gps-marker';
         el.title = '내 위치';
 
-        state.userMarkerOverlay = new ol.Overlay({
-            position: ol.proj.fromLonLat(coords),
-            positioning: 'center-center',
-            element: el,
-            stopEvent: false
-        });
-        state.map.addOverlay(state.userMarkerOverlay);
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            state.userMarkerOverlay = new kakao.maps.CustomOverlay({
+                position: new kakao.maps.LatLng(coords[1], coords[0]),
+                content: el,
+                xAnchor: 0.5,
+                yAnchor: 0.5
+            });
+            state.userMarkerOverlay.setMap(state.kakaoMap);
+            return;
+        }
+
+        if (state.map) {
+            state.userMarkerOverlay = new ol.Overlay({
+                position: ol.proj.fromLonLat(coords),
+                positioning: 'center-center',
+                element: el,
+                stopEvent: false
+            });
+            state.map.addOverlay(state.userMarkerOverlay);
+        }
     }
 
     // ========================================================================
@@ -998,6 +1182,30 @@
                 }
             });
             return result.join(' ');
+        }
+
+        // 0차 최우선 시도: 카카오맵 Geocoder (카카오맵 연동 시 가장 정확한 대한민국 행정동/법정동 반환)
+        if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+            try {
+                const geocoder = new window.kakao.maps.services.Geocoder();
+                const kakaoRegion = await new Promise((resolve) => {
+                    geocoder.coord2RegionCode(lng, lat, (result, status) => {
+                        if (status === window.kakao.maps.services.Status.OK && result && result.length > 0) {
+                            const bRegion = result.find(r => r.region_type === 'B') || result[0];
+                            resolve(bRegion.address_name || '');
+                        } else {
+                            resolve('');
+                        }
+                    });
+                });
+                if (kakaoRegion) {
+                    regionInput.value = kakaoRegion;
+                    regionInput.placeholder = prevPlaceholder;
+                    return kakaoRegion;
+                }
+            } catch (e) {
+                // 무시 후 다음 단계 진행
+            }
         }
 
         // 1차 시도: OpenStreetMap Nominatim (상세 법정동/행정동 추출)
@@ -1052,9 +1260,7 @@
         state.editingRestroomId = item ? item.id : null;
         document.getElementById('wc-modal-title').textContent = item ? '✏️ 화장실 정보 수정' : '➕ 새 화장실 추가 / 제보';
 
-        const centerCoords = state.map
-            ? ol.proj.toLonLat(state.map.getView().getCenter())
-            : [126.742887, 37.5205];
+        const centerCoords = getMapCenterLonLat();
 
         const initLat = item ? item.lat : Number(centerCoords[1].toFixed(7));
         const initLng = item ? item.lng : Number(centerCoords[0].toFixed(7));
@@ -1435,6 +1641,21 @@
     }
 
     function renderAdminCloudSettings() {
+        const kakaoKey = getKakaoAppKey();
+        const kakaoInput = document.getElementById('kakao-key-input');
+        if (kakaoInput) kakaoInput.value = kakaoKey;
+
+        const kakaoStatus = document.getElementById('kakao-status-indicator');
+        if (kakaoStatus) {
+            if (state.engine === 'kakao') {
+                kakaoStatus.innerHTML = `<span style="color:var(--success); font-weight:800;">🟢 현재 지도 엔진: 카카오맵(Kakao Maps) 정식 연동 중</span>`;
+            } else if (kakaoKey && window.location.protocol === 'file:') {
+                kakaoStatus.innerHTML = `<span style="color:var(--warning); font-weight:800;">🟡 카카오 키 입력됨 (로컬 file:// 환경에서는 카카오 보안 정책상 기본 지도가 뜨며, GitHub Pages 배포 주소에서 카카오맵으로 작동합니다)</span>`;
+            } else {
+                kakaoStatus.innerHTML = `<span style="color:var(--warning); font-weight:800;">🟡 현재 지도 엔진: 기본 지도 (아래에 Kakao JavaScript 키 입력 시 카카오맵으로 전환)</span>`;
+            }
+        }
+
         const { url, anonKey } = window.WCDB.getSupabaseCredentials();
         document.getElementById('supabase-url-input').value = url;
         document.getElementById('supabase-key-input').value = anonKey;
@@ -1559,10 +1780,15 @@
             });
         });
 
-        // 4. 급똥(가까운 변소 찾기) & 화장실 추가 플로팅 버튼
+        // 4. 급똥(가까운 변소 찾기) & 화장실 추가 플로팅 버튼 & 우측 상단 +- 줌 버튼
         document.getElementById('fab-nearest').addEventListener('click', findNearestRestroom);
         document.getElementById('fab-add-wc').addEventListener('click', () => openRestroomModal(null));
         document.getElementById('btn-header-add-wc').addEventListener('click', () => openRestroomModal(null));
+
+        const btnZoomIn = document.getElementById('btn-zoom-in');
+        const btnZoomOut = document.getElementById('btn-zoom-out');
+        if (btnZoomIn) btnZoomIn.addEventListener('click', () => zoomMapBy(1));
+        if (btnZoomOut) btnZoomOut.addEventListener('click', () => zoomMapBy(-1));
 
         // 5. 화장실 추가/수정 모달 내부 이벤트
         document.getElementById('wc-separated').addEventListener('change', syncPasswordFieldsVisibility);
@@ -1644,6 +1870,26 @@
             URL.revokeObjectURL(url);
             showToast('📦 화장실 데이터 JSON 백업 파일이 다운로드되었습니다.');
         });
+
+        // 관리자: 카카오맵 API 키 저장
+        const btnSaveKakao = document.getElementById('btn-save-kakao');
+        if (btnSaveKakao) {
+            btnSaveKakao.addEventListener('click', async () => {
+                const key = (document.getElementById('kakao-key-input').value || '').trim();
+                if (!key) {
+                    localStorage.removeItem('wc_kakao_app_key');
+                    showToast('카카오맵 키가 제거되어 기본 지도로 전환합니다.');
+                } else {
+                    localStorage.setItem('wc_kakao_app_key', key);
+                    showToast('🟡 카카오맵 API 키가 저장되었습니다! 지도를 다시 불러옵니다...');
+                }
+                state.kakaoMap = null;
+                state.map = null;
+                await initMap();
+                renderMapMarkers();
+                renderAdminCloudSettings();
+            });
+        }
 
         // 관리자: Supabase 연동 저장
         document.getElementById('btn-save-supabase').addEventListener('click', async () => {
