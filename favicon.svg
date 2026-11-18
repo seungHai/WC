@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <!-- Map Pin Outer -->
+  <path d="M32 10c-9.94 0-18 7.8-18 17.42 0 12.18 15.65 25.02 16.32 25.56a2.67 2.67 0 0 0 3.36 0C34.35 52.44 50 39.6 50 27.42 50 17.8 41.94 10 32 10z" fill="#ffffff"/>
+  <!-- WC / Toilet Icon inside Pin -->
+  <rect x="24" y="18" width="6" height="9" rx="2" fill="#2563eb"/>
+  <path d="M23 28h18c0 5.5-3.2 9.5-9 9.5S23 33.5 23 28z" fill="#2563eb"/>
+  <rect x="28" y="37" width="8" height="4" rx="1.5" fill="#2563eb"/>
+  <circle cx="40" cy="21" r="3" fill="#10b981"/>
+</svg>
