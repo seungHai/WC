@@ -120,7 +120,7 @@
         if (!badge) return;
         if (window.WCDB.isCloudMode()) {
             badge.className = 'auth-mode-badge cloud';
-            badge.innerHTML = '🟢 Supabase 클라우드 보안 인증 연동됨';
+            badge.innerHTML = '🟢 클라우드 보안 인증 연동됨';
         } else {
             badge.className = 'auth-mode-badge';
             badge.innerHTML = '🔒 보안 회원제 로그인 (초기 관리자: admin / admin1234)';
