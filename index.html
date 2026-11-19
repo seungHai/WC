@@ -102,13 +102,13 @@
                         <h2>대똥여지도</h2>
                     </div>
                     <div class="user-pill-bar">
-                        <button type="button" id="btn-open-admin" class="icon-btn admin-btn" style="display: none;">
-                            👑 관리자 센터
+                        <button type="button" id="btn-open-admin" class="icon-btn admin-btn" style="display: none;" title="관리자 센터">
+                            👑<span class="btn-label"> 관리자 센터</span>
                         </button>
-                        <button type="button" id="btn-header-add-wc" class="icon-btn primary">
-                            ➕ 화장실 제보
+                        <button type="button" id="btn-header-add-wc" class="icon-btn primary" title="화장실 제보">
+                            ➕<span class="btn-label"> 화장실 제보</span>
                         </button>
-                        <button type="button" id="btn-theme-toggle" class="icon-btn">
+                        <button type="button" id="btn-theme-toggle" class="icon-btn" title="다크모드 전환">
                             🌙 다크
                         </button>
                     </div>
@@ -121,9 +121,9 @@
                         <strong id="user-display-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">회원님</strong>
                     </div>
                     <div class="user-info-actions">
-                        <button type="button" id="btn-change-my-pw" class="text-link-btn">비밀번호 변경</button>
+                        <button type="button" id="btn-change-my-pw" class="text-link-btn"><span class="lbl-long">비밀번호 변경</span><span class="lbl-short">비번변경</span></button>
                         <span style="color:var(--border-color);">|</span>
-                        <button type="button" id="btn-logout" class="text-link-btn">계정전환/로그아웃</button>
+                        <button type="button" id="btn-logout" class="text-link-btn"><span class="lbl-long">계정전환/로그아웃</span><span class="lbl-short">로그아웃</span></button>
                     </div>
                 </div>
 
@@ -167,9 +167,9 @@
             <div class="map-top-bar">
                 <div id="region-bar" class="region-bar"></div>
                 <div id="map-style-bar" class="region-bar">
-                    <button type="button" class="region-btn active" data-map-style="voyager">🗺️ 일반지도</button>
-                    <button type="button" class="region-btn" data-map-style="detailed">🏪 상세상가</button>
-                    <button type="button" class="region-btn" data-map-style="satellite">🛰️ 위성지도</button>
+                    <button type="button" class="region-btn active" data-map-style="voyager">🗺️<span class="lbl-long"> 일반지도</span><span class="lbl-short"> 일반</span></button>
+                    <button type="button" class="region-btn" data-map-style="detailed">🏪<span class="lbl-long"> 상세상가</span><span class="lbl-short"> 상가</span></button>
+                    <button type="button" class="region-btn" data-map-style="satellite">🛰️<span class="lbl-long"> 위성지도</span><span class="lbl-short"> 위성</span></button>
                 </div>
             </div>
 
@@ -179,10 +179,35 @@
                 <button type="button" id="btn-zoom-out" class="custom-zoom-btn" title="축소">−</button>
             </div>
 
-            <!-- 지도에서 위치 찍기 안내 배너 -->
-            <div id="map-pick-banner" class="map-pick-banner">
-                <span>🎯 지도에서 화장실 위치를 클릭하세요</span>
-                <button type="button" id="btn-cancel-pick" class="icon-btn" style="height:28px;">취소</button>
+            <!-- 지도에서 위치 찍기 모드: 상단 장소/주소/좌표 검색 패널 -->
+            <div id="map-pick-panel" class="map-pick-panel">
+                <div class="pick-panel-title">🎯 지도를 움직여 가운데 핀을 화장실 위치에 맞추세요</div>
+                <form id="pick-search-form" class="pick-search-row" autocomplete="off">
+                    <input
+                        id="pick-search-input"
+                        type="search"
+                        enterkeyhint="search"
+                        placeholder="장소·주소·좌표 검색 (예: 삼산동 GS25, 37.5205,126.7428)"
+                    >
+                    <button type="submit" class="icon-btn primary">검색</button>
+                </form>
+                <div id="pick-search-results" class="pick-search-results"></div>
+            </div>
+
+            <!-- 지도에서 위치 찍기 모드: 화면 중앙 고정 핀 -->
+            <div id="map-pick-crosshair" class="map-pick-crosshair">
+                <span class="pick-pin">📍</span>
+                <span class="pick-dot"></span>
+            </div>
+
+            <!-- 지도에서 위치 찍기 모드: 하단 좌표 표시 & 확정 버튼 -->
+            <div id="map-pick-actions" class="map-pick-actions">
+                <div id="pick-coord-readout" class="pick-coord-readout"></div>
+                <div class="pick-action-row">
+                    <button type="button" id="btn-pick-my-gps" class="icon-btn">📡 내 위치</button>
+                    <button type="button" id="btn-cancel-pick" class="icon-btn">취소</button>
+                    <button type="button" id="btn-confirm-pick" class="icon-btn primary">✅ 이 위치로 선택</button>
+                </div>
             </div>
 
             <!-- OpenLayers Map -->
@@ -193,11 +218,11 @@
 
             <!-- 우측 하단 플로팅 버튼 그룹 -->
             <div class="map-fab-group">
-                <button type="button" id="fab-nearest" class="fab-btn urgent">
-                    🚨 급똥! 가까운 변소 찾기
+                <button type="button" id="fab-nearest" class="fab-btn urgent" title="가까운 변소 찾기">
+                    🚨 <span class="lbl-long">급똥! 가까운 변소 찾기</span><span class="lbl-short">급똥!</span>
                 </button>
-                <button type="button" id="fab-add-wc" class="fab-btn add-wc">
-                    ➕ 새 화장실 등록
+                <button type="button" id="fab-add-wc" class="fab-btn add-wc" title="새 화장실 등록">
+                    ➕<span class="lbl-long"> 새 화장실 등록</span>
                 </button>
             </div>
         </main>
@@ -248,21 +273,22 @@
                     <div class="admin-card-box" style="margin-bottom:14px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
                             <strong style="font-size:13px;">📍 지도 위치 좌표 설정</strong>
-                            <div style="display:flex; gap:6px;">
-                                <button type="button" id="btn-pick-on-map" class="icon-btn primary">🎯 지도에서 직접 찍기</button>
+                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <button type="button" id="btn-pick-on-map" class="icon-btn primary">🎯 지도에서 찍기 · 검색</button>
                                 <button type="button" id="btn-use-my-gps" class="icon-btn">📡 내 현재 위치</button>
                             </div>
                         </div>
                         <div class="form-grid" style="margin-bottom:0;">
                             <div class="form-field" style="margin-bottom:0;">
                                 <label for="wc-lat">위도 (Latitude)</label>
-                                <input id="wc-lat" type="number" step="any" readonly required>
+                                <input id="wc-lat" type="text" inputmode="decimal" placeholder="예: 37.5205" required>
                             </div>
                             <div class="form-field" style="margin-bottom:0;">
                                 <label for="wc-lng">경도 (Longitude)</label>
-                                <input id="wc-lng" type="number" step="any" readonly required>
+                                <input id="wc-lng" type="text" inputmode="decimal" placeholder="예: 126.7428" required>
                             </div>
                         </div>
+                        <p class="coord-hint">💡 좌표를 직접 입력하거나 <b>"37.5205, 126.7428"</b> 형태로 붙여넣어도 됩니다.</p>
                     </div>
 
                     <!-- 남녀 분리 및 휴지 구비 체크 -->

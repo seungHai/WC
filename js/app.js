@@ -17,6 +17,8 @@
         activeRegion: 'all',
         searchQuery: '',
         isPickingLocation: false,
+        pickPlaceName: '', // 위치 찍기 중 검색으로 고른 장소명 (장소명 칸이 비어있으면 자동 입력)
+        sheetState: 'collapsed', // 모바일 바텀시트: 'collapsed' | 'half' | 'expanded'
         editingRestroomId: null,
         adminUsersCache: [],
         lastCreatedCredentials: {} // username -> plainPassword (세션 내 안내 문구 복사용)
@@ -232,6 +234,19 @@
         }
     }
 
+    function panMapTo(lng, lat) {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            state.kakaoMap.panTo(new kakao.maps.LatLng(lat, lng));
+            return;
+        }
+        if (state.map) {
+            state.map.getView().animate({
+                center: ol.proj.fromLonLat([lng, lat]),
+                duration: 250
+            });
+        }
+    }
+
     function zoomMapBy(delta) {
         if (state.engine === 'kakao' && state.kakaoMap) {
             const curLevel = state.kakaoMap.getLevel();
@@ -313,13 +328,13 @@
 
                     kakao.maps.event.addListener(state.kakaoMap, 'click', function (mouseEvent) {
                         if (state.isPickingLocation) {
+                            // 위치 찍기 모드: 탭한 지점으로 중앙 핀을 이동 (확정은 하단 버튼으로)
                             const latlng = mouseEvent.latLng;
-                            finishLocationPicking(
-                                Number(latlng.getLng().toFixed(7)),
-                                Number(latlng.getLat().toFixed(7))
-                            );
+                            panMapTo(latlng.getLng(), latlng.getLat());
                         }
                     });
+
+                    kakao.maps.event.addListener(state.kakaoMap, 'center_changed', updatePickCoordReadout);
 
                     kakao.maps.event.addListener(state.kakaoMap, 'idle', function () {
                         renderMapMarkers();
@@ -363,15 +378,14 @@
         }, 120);
 
         state.map.on('click', async function (evt) {
-            const lonLat = ol.proj.toLonLat(evt.coordinate);
-            const lng = Number(lonLat[0].toFixed(7));
-            const lat = Number(lonLat[1].toFixed(7));
-
             if (state.isPickingLocation) {
-                finishLocationPicking(lng, lat);
-                return;
+                // 위치 찍기 모드: 탭한 지점으로 중앙 핀을 이동 (확정은 하단 버튼으로)
+                const lonLat = ol.proj.toLonLat(evt.coordinate);
+                panMapTo(lonLat[0], lonLat[1]);
             }
         });
+
+        state.map.getView().on('change:center', updatePickCoordReadout);
 
         state.map.on('moveend', function () {
             renderMapMarkers();
@@ -974,9 +988,20 @@
             cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
+        // 모바일: 지도와 상세 카드가 보이도록 바텀시트를 접음
+        if (isMobileLayout() && state.sheetState !== 'collapsed') {
+            setSheetState('collapsed');
+        }
+
         if (animateMap) {
             moveMapTo(item.lng, item.lat, Math.max(getMapZoom(), 17));
         }
+    }
+
+    function closeDetailSheet() {
+        const sheet = document.getElementById('detail-sheet');
+        if (sheet) sheet.style.display = 'none';
+        document.getElementById('app-shell').classList.remove('detail-open');
     }
 
     function openDetailSheet(item) {
@@ -991,6 +1016,7 @@
         const googleUrl = `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
 
         sheet.style.display = 'block';
+        document.getElementById('app-shell').classList.add('detail-open');
         sheet.innerHTML = `
             <div class="detail-header">
                 <div>
@@ -1035,7 +1061,7 @@
         `;
 
         sheet.querySelector('#btn-close-detail').onclick = () => {
-            sheet.style.display = 'none';
+            closeDetailSheet();
             state.selectedId = null;
             renderRestroomList();
             renderMapMarkers();
@@ -1064,7 +1090,7 @@
                 if (!confirm(`[${item.name}] 화장실 정보를 삭제하시겠습니까?`)) return;
                 try {
                     await window.WCDB.deleteRestroom(item.id);
-                    sheet.style.display = 'none';
+                    closeDetailSheet();
                     state.selectedId = null;
                     showToast('삭제되었습니다.');
                     await loadRestrooms();
@@ -1304,25 +1330,196 @@
         document.getElementById('pw-separated-group').style.display = isSeparated ? 'grid' : 'none';
     }
 
+    // ========================================================================
+    // 지도 위치 찍기 모드 (중앙 고정 핀 + 장소/주소/좌표 검색)
+    // ========================================================================
+    function isValidLatLng(lat, lng) {
+        return Number.isFinite(lat) && Number.isFinite(lng) &&
+            Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    }
+
+    // "37.5205, 126.7428" / "126.7428 37.5205" 같은 좌표 문자열 파싱 (순서가 뒤바뀌어도 한국 범위 기준으로 보정)
+    function parseCoordText(text) {
+        const m = String(text || '').match(/(-?\d{1,3}(?:\.\d+)?)\s*[,\s/]\s*(-?\d{1,3}(?:\.\d+)?)/);
+        if (!m) return null;
+        let a = parseFloat(m[1]);
+        let b = parseFloat(m[2]);
+        if (Math.abs(a) > 90) {
+            [a, b] = [b, a];
+        }
+        if (!isValidLatLng(a, b)) return null;
+        return { lat: Number(a.toFixed(7)), lng: Number(b.toFixed(7)) };
+    }
+
+    function updatePickCoordReadout() {
+        if (!state.isPickingLocation) return;
+        const el = document.getElementById('pick-coord-readout');
+        if (!el) return;
+        const c = getMapCenterLonLat();
+        el.textContent = `📍 위도 ${c[1].toFixed(6)} · 경도 ${c[0].toFixed(6)}`;
+    }
+
     function startLocationPicking() {
         state.isPickingLocation = true;
+        state.pickPlaceName = '';
         document.getElementById('wc-modal').classList.remove('open');
-        const banner = document.getElementById('map-pick-banner');
-        if (banner) banner.style.display = 'flex';
-        showToast('📍 지도 위에서 화장실이 위치한 건물을 클릭하세요!');
+        document.body.classList.add('picking');
+        document.getElementById('pick-search-input').value = '';
+        document.getElementById('pick-search-results').innerHTML = '';
+        refreshMapSize();
+
+        // 이미 입력된 좌표가 있으면 그 위치에서 시작
+        const lat = parseFloat(document.getElementById('wc-lat').value);
+        const lng = parseFloat(document.getElementById('wc-lng').value);
+        if (isValidLatLng(lat, lng)) {
+            moveMapTo(lng, lat, Math.max(getMapZoom(), 17));
+        }
+        setTimeout(updatePickCoordReadout, 80);
+    }
+
+    function stopLocationPicking() {
+        state.isPickingLocation = false;
+        document.body.classList.remove('picking');
+        document.getElementById('pick-search-results').innerHTML = '';
+        refreshMapSize();
+    }
+
+    function confirmLocationPicking() {
+        const c = getMapCenterLonLat();
+        finishLocationPicking(Number(c[0].toFixed(7)), Number(c[1].toFixed(7)));
     }
 
     async function finishLocationPicking(lng, lat) {
-        state.isPickingLocation = false;
-        const banner = document.getElementById('map-pick-banner');
-        if (banner) banner.style.display = 'none';
+        stopLocationPicking();
 
         document.getElementById('wc-lng').value = lng;
         document.getElementById('wc-lat').value = lat;
+        const nameInput = document.getElementById('wc-name');
+        if (state.pickPlaceName && !nameInput.value.trim()) {
+            nameInput.value = state.pickPlaceName;
+        }
         document.getElementById('wc-modal').classList.add('open');
 
         const regionText = await autoFillRegionFromCoords(lat, lng);
         showToast(regionText ? `✅ [${regionText}] 위치가 자동 입력되었습니다.` : '✅ 선택한 지도 좌표가 입력되었습니다.');
+    }
+
+    // 장소·주소 검색: 카카오 로컬(Places/주소) 우선, 실패 시 OpenStreetMap Nominatim 폴백
+    async function searchPlacesForPick(query) {
+        const services = window.kakao && window.kakao.maps && window.kakao.maps.services;
+        if (services) {
+            const center = getMapCenterLonLat();
+            const kakaoPlaces = await new Promise((resolve) => {
+                try {
+                    new services.Places().keywordSearch(query, (data, status) => {
+                        resolve(status === services.Status.OK ? data : []);
+                    }, { location: new kakao.maps.LatLng(center[1], center[0]), size: 10 });
+                } catch (e) {
+                    resolve([]);
+                }
+            });
+            if (kakaoPlaces.length > 0) {
+                return kakaoPlaces.map(p => ({
+                    name: p.place_name,
+                    addr: p.road_address_name || p.address_name || '',
+                    lat: parseFloat(p.y),
+                    lng: parseFloat(p.x)
+                }));
+            }
+            const kakaoAddrs = await new Promise((resolve) => {
+                try {
+                    new services.Geocoder().addressSearch(query, (data, status) => {
+                        resolve(status === services.Status.OK ? data : []);
+                    });
+                } catch (e) {
+                    resolve([]);
+                }
+            });
+            if (kakaoAddrs.length > 0) {
+                return kakaoAddrs.map(a => ({
+                    name: a.address_name,
+                    addr: (a.road_address && a.road_address.building_name) || '',
+                    lat: parseFloat(a.y),
+                    lng: parseFloat(a.x),
+                    isAddress: true
+                }));
+            }
+        }
+
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&countrycodes=kr&limit=10&accept-language=ko`
+            );
+            if (res.ok) {
+                const data = await res.json();
+                return data.map(d => ({
+                    name: d.name || String(d.display_name || '').split(',')[0],
+                    addr: d.display_name || '',
+                    lat: parseFloat(d.lat),
+                    lng: parseFloat(d.lon)
+                }));
+            }
+        } catch (e) {
+            // 네트워크 차단 시 빈 결과
+        }
+        return [];
+    }
+
+    async function handlePickSearch(e) {
+        e.preventDefault();
+        const input = document.getElementById('pick-search-input');
+        const resultsEl = document.getElementById('pick-search-results');
+        const query = input.value.trim();
+        if (!query) return;
+        input.blur();
+
+        const coord = parseCoordText(query);
+        if (coord) {
+            resultsEl.innerHTML = '';
+            state.pickPlaceName = '';
+            moveMapTo(coord.lng, coord.lat, 18);
+            showToast('📍 입력한 좌표로 이동했습니다.');
+            return;
+        }
+
+        resultsEl.innerHTML = '<div class="pick-result-empty">🔍 검색 중...</div>';
+        const results = (await searchPlacesForPick(query)).filter(r => isValidLatLng(r.lat, r.lng));
+        if (results.length === 0) {
+            resultsEl.innerHTML = '<div class="pick-result-empty">검색 결과가 없습니다. 지도를 직접 움직여 핀을 맞추거나 좌표를 입력해보세요.</div>';
+            return;
+        }
+
+        resultsEl.innerHTML = results.map((r, i) => `
+            <button type="button" class="pick-result-item" data-idx="${i}">
+                <div class="pick-result-name">${escapeHtml(r.name)}</div>
+                ${r.addr ? `<div class="pick-result-addr">${escapeHtml(r.addr)}</div>` : ''}
+            </button>
+        `).join('');
+        resultsEl.querySelectorAll('.pick-result-item').forEach(btn => {
+            btn.onclick = () => {
+                const r = results[Number(btn.getAttribute('data-idx'))];
+                state.pickPlaceName = r.isAddress ? '' : r.name;
+                resultsEl.innerHTML = '';
+                moveMapTo(r.lng, r.lat, 18);
+                showToast('핀 위치를 확인하고 필요하면 지도를 살짝 움직여 맞춘 뒤 [이 위치로 선택]을 누르세요.');
+            };
+        });
+    }
+
+    // 모달의 위도/경도 입력칸: 직접 입력 또는 "위도, 경도" 붙여넣기 지원
+    function handleCoordInputChange(e) {
+        const latInput = document.getElementById('wc-lat');
+        const lngInput = document.getElementById('wc-lng');
+        const pasted = parseCoordText(e.target.value);
+        if (pasted && /[,\s/]/.test(e.target.value.trim())) {
+            latInput.value = pasted.lat;
+            lngInput.value = pasted.lng;
+        }
+        const lat = parseFloat(latInput.value);
+        const lng = parseFloat(lngInput.value);
+        if (isValidLatLng(lat, lng)) {
+            autoFillRegionFromCoords(lat, lng);
+        }
     }
 
     async function handleSaveRestroomForm(e) {
@@ -1333,6 +1530,13 @@
             return;
         }
 
+        const latVal = parseFloat(document.getElementById('wc-lat').value);
+        const lngVal = parseFloat(document.getElementById('wc-lng').value);
+        if (!isValidLatLng(latVal, lngVal)) {
+            showToast('위도/경도 좌표가 올바르지 않습니다. 지도에서 찍거나 좌표를 다시 입력해주세요.');
+            return;
+        }
+
         const isSeparated = document.getElementById('wc-separated').checked;
         const payload = {
             id: state.editingRestroomId,
@@ -1340,8 +1544,8 @@
             location_detail: document.getElementById('wc-detail').value.trim(),
             floor: document.getElementById('wc-floor').value.trim() || '1층',
             region: document.getElementById('wc-region').value.trim(),
-            lat: parseFloat(document.getElementById('wc-lat').value),
-            lng: parseFloat(document.getElementById('wc-lng').value),
+            lat: latVal,
+            lng: lngVal,
             gender_separated: isSeparated,
             has_paper: document.getElementById('wc-paper').checked,
             pw_common: isSeparated ? '' : document.getElementById('wc-pw-common').value.trim(),
@@ -1830,10 +2034,25 @@
         document.getElementById('wc-separated').addEventListener('change', syncPasswordFieldsVisibility);
         document.getElementById('btn-pick-on-map').addEventListener('click', startLocationPicking);
         document.getElementById('btn-cancel-pick').addEventListener('click', () => {
-            state.isPickingLocation = false;
-            document.getElementById('map-pick-banner').style.display = 'none';
+            stopLocationPicking();
             document.getElementById('wc-modal').classList.add('open');
         });
+        document.getElementById('btn-confirm-pick').addEventListener('click', confirmLocationPicking);
+        document.getElementById('pick-search-form').addEventListener('submit', handlePickSearch);
+        document.getElementById('btn-pick-my-gps').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                showToast('브라우저에서 GPS를 지원하지 않습니다.');
+                return;
+            }
+            showToast('📡 현재 내 위치로 이동하는 중...');
+            navigator.geolocation.getCurrentPosition(
+                pos => moveMapTo(pos.coords.longitude, pos.coords.latitude, 18),
+                () => showToast('위치 권한을 허용해주세요.'),
+                { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
+            );
+        });
+        document.getElementById('wc-lat').addEventListener('change', handleCoordInputChange);
+        document.getElementById('wc-lng').addEventListener('change', handleCoordInputChange);
         document.getElementById('btn-use-my-gps').addEventListener('click', () => {
             if (!navigator.geolocation) {
                 showToast('브라우저에서 GPS를 지원하지 않습니다.');
@@ -1963,17 +2182,178 @@
             });
         });
 
-        // 모바일 바텀 시트 높이 토글 핸들
-        const mobileHandle = document.getElementById('mobile-sheet-handle');
-        const sidePanel = document.getElementById('side-panel');
-        if (mobileHandle && sidePanel) {
-            mobileHandle.addEventListener('click', () => {
-                if (sidePanel.classList.contains('expanded')) {
-                    sidePanel.classList.remove('expanded');
-                } else {
-                    sidePanel.classList.add('expanded');
-                }
+        // 모바일 바텀 시트 (핸들 탭 + 위아래 스와이프)
+        initBottomSheet();
+    });
+
+    // ========================================================================
+    // 모바일 바텀시트: 3단 스냅(접힘/중간/펼침) + 스와이프 드래그
+    // ========================================================================
+    const SHEET_STATES = ['collapsed', 'half', 'expanded'];
+
+    function isMobileLayout() {
+        return window.matchMedia('(max-width: 820px)').matches;
+    }
+
+    function getSheetSnapHeights() {
+        const vh = window.innerHeight;
+        return { collapsed: 138, half: Math.round(vh * 0.46), expanded: Math.round(vh * 0.88) };
+    }
+
+    function setSheetState(next) {
+        const panel = document.getElementById('side-panel');
+        const shell = document.getElementById('app-shell');
+        if (!panel || !shell) return;
+        state.sheetState = next;
+        panel.style.height = '';
+        panel.classList.toggle('collapsed', next === 'collapsed');
+        panel.classList.toggle('expanded', next === 'expanded');
+        shell.classList.toggle('sheet-expanded', next === 'expanded');
+        shell.style.setProperty('--sheet-h', `${getSheetSnapHeights()[next]}px`);
+    }
+
+    function initBottomSheet() {
+        const panel = document.getElementById('side-panel');
+        const shell = document.getElementById('app-shell');
+        const handle = document.getElementById('mobile-sheet-handle');
+        const header = panel && panel.querySelector('.panel-header');
+        const list = document.getElementById('restroom-list');
+        if (!panel || !shell || !handle) return;
+
+        setSheetState(state.sheetState);
+        window.addEventListener('resize', () => setSheetState(state.sheetState));
+
+        handle.addEventListener('click', () => {
+            const idx = SHEET_STATES.indexOf(state.sheetState);
+            setSheetState(state.sheetState === 'expanded' ? 'collapsed' : SHEET_STATES[idx + 1]);
+        });
+
+        // 검색창을 누르면 결과 목록이 보이도록 시트를 펼침
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) {
+            searchInput.addEventListener('focus', () => {
+                if (isMobileLayout() && state.sheetState === 'collapsed') setSheetState('half');
             });
         }
-    });
+
+        const drag = { active: false, decided: false, moved: false, startY: 0, startX: 0, startH: 0, lastY: 0, lastT: 0, velocity: 0, fromList: false };
+
+        function onStart(clientX, clientY, fromList) {
+            if (!isMobileLayout()) return;
+            drag.active = true;
+            drag.decided = false;
+            drag.moved = false;
+            drag.fromList = fromList;
+            drag.startX = clientX;
+            drag.startY = clientY;
+            drag.lastY = clientY;
+            drag.lastT = performance.now();
+            drag.velocity = 0;
+            drag.startH = panel.getBoundingClientRect().height;
+        }
+
+        // 반환값 true = 시트가 제스처를 가져감 (기본 스크롤 막기)
+        function onMove(clientX, clientY) {
+            if (!drag.active) return false;
+            const dy = clientY - drag.startY;
+            const dx = clientX - drag.startX;
+
+            if (!drag.decided) {
+                if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return false;
+                // 가로 스와이프(필터 칩 스크롤 등)는 시트가 가로채지 않음
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    drag.active = false;
+                    return false;
+                }
+                // 목록 위에서는: 펼침 상태면 맨 위에서 아래로 당길 때만 시트를 내림
+                if (drag.fromList && state.sheetState === 'expanded' && (dy < 0 || list.scrollTop > 0)) {
+                    drag.active = false;
+                    return false;
+                }
+                drag.decided = true;
+                drag.moved = true;
+                panel.classList.add('dragging');
+                shell.classList.add('sheet-dragging');
+                if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+            }
+
+            const snaps = getSheetSnapHeights();
+            const h = Math.max(snaps.collapsed - 30, Math.min(snaps.expanded + 20, drag.startH - dy));
+            panel.style.height = `${h}px`;
+            shell.style.setProperty('--sheet-h', `${h}px`);
+
+            const now = performance.now();
+            const dt = Math.max(1, now - drag.lastT);
+            drag.velocity = (clientY - drag.lastY) / dt; // +: 아래로, -: 위로 (px/ms)
+            drag.lastY = clientY;
+            drag.lastT = now;
+            return true;
+        }
+
+        function onEnd() {
+            if (!drag.active) return;
+            drag.active = false;
+            if (!drag.decided) return;
+
+            panel.classList.remove('dragging');
+            shell.classList.remove('sheet-dragging');
+
+            const snaps = getSheetSnapHeights();
+            const curH = panel.getBoundingClientRect().height;
+            let target;
+            if (Math.abs(drag.velocity) > 0.45) {
+                // 빠르게 튕기면 진행 방향의 다음 단계로
+                const ordered = SHEET_STATES.filter(s => (drag.velocity < 0 ? snaps[s] > curH : snaps[s] < curH));
+                target = drag.velocity < 0 ? ordered[0] : ordered[ordered.length - 1];
+            }
+            if (!target) {
+                target = SHEET_STATES.reduce((best, s) => (Math.abs(snaps[s] - curH) < Math.abs(snaps[best] - curH) ? s : best), 'half');
+            }
+            setSheetState(target);
+            // 드래그 직후 발생하는 click(핸들 토글/카드 선택) 무시
+            setTimeout(() => { drag.moved = false; }, 50);
+        }
+
+        function bindTouch(el, fromList) {
+            if (!el) return;
+            el.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) return;
+                if (!fromList && e.target.closest('input, select, textarea')) return;
+                onStart(e.touches[0].clientX, e.touches[0].clientY, fromList);
+            }, { passive: true });
+            el.addEventListener('touchmove', (e) => {
+                if (onMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            el.addEventListener('touchend', onEnd);
+            el.addEventListener('touchcancel', onEnd);
+        }
+
+        bindTouch(handle, false);
+        bindTouch(header, false);
+        bindTouch(document.querySelector('.restroom-list-header'), false);
+        bindTouch(list, true);
+
+        // 데스크톱 브라우저 모바일 뷰 테스트용 마우스 드래그 (핸들)
+        handle.addEventListener('mousedown', (e) => {
+            onStart(e.clientX, e.clientY, false);
+            const mm = (ev) => onMove(ev.clientX, ev.clientY);
+            const mu = () => {
+                onEnd();
+                window.removeEventListener('mousemove', mm);
+                window.removeEventListener('mouseup', mu);
+            };
+            window.addEventListener('mousemove', mm);
+            window.addEventListener('mouseup', mu);
+        });
+
+        // 드래그로 끝난 제스처가 카드 클릭으로 이어지지 않도록 캡처 단계에서 차단
+        panel.addEventListener('click', (e) => {
+            if (drag.moved) {
+                e.stopPropagation();
+                e.preventDefault();
+            }
+        }, true);
+    }
 })();
