@@ -1534,22 +1534,6 @@
         });
     }
 
-    // 모달의 위도/경도 입력칸: 직접 입력 또는 "위도, 경도" 붙여넣기 지원
-    function handleCoordInputChange(e) {
-        const latInput = document.getElementById('wc-lat');
-        const lngInput = document.getElementById('wc-lng');
-        const pasted = parseCoordText(e.target.value);
-        if (pasted && /[,\s/]/.test(e.target.value.trim())) {
-            latInput.value = pasted.lat;
-            lngInput.value = pasted.lng;
-        }
-        const lat = parseFloat(latInput.value);
-        const lng = parseFloat(lngInput.value);
-        if (isValidLatLng(lat, lng)) {
-            autoFillRegionFromCoords(lat, lng);
-        }
-    }
-
     async function handleSaveRestroomForm(e) {
         e.preventDefault();
         const name = document.getElementById('wc-name').value.trim();
@@ -1561,7 +1545,7 @@
         const latVal = parseFloat(document.getElementById('wc-lat').value);
         const lngVal = parseFloat(document.getElementById('wc-lng').value);
         if (!isValidLatLng(latVal, lngVal)) {
-            showToast('위도/경도 좌표가 올바르지 않습니다. 지도에서 찍거나 좌표를 다시 입력해주세요.');
+            showToast('위도/경도 좌표가 올바르지 않습니다. 🎯 지도에서 찍기 또는 📡 내 현재 위치로 위치를 지정해주세요.');
             return;
         }
 
@@ -2114,8 +2098,6 @@
                 { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
             );
         });
-        bindById('wc-lat', 'change', handleCoordInputChange);
-        bindById('wc-lng', 'change', handleCoordInputChange);
         bindById('btn-use-my-gps', 'click', () => {
             if (!navigator.geolocation) {
                 showToast('브라우저에서 GPS를 지원하지 않습니다.');
