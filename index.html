@@ -7,6 +7,14 @@
     <title>대똥여지도 - 프라이빗 화장실 안내 서비스</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
 
+    <!-- 홈 화면에 추가 (PWA 웹앱) -->
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="대똥여지도">
+
     <!-- OpenLayers v7.4.0 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.4.0/ol.css">
     <script src="https://cdn.jsdelivr.net/npm/ol@7.4.0/dist/ol.js"></script>
@@ -19,7 +27,7 @@
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7470571035558189" crossorigin="anonymous"></script>
 
     <!-- App Stylesheet -->
-    <link rel="stylesheet" href="./css/style.css?v=20261119c">
+    <link rel="stylesheet" href="./css/style.css?v=20261119d">
 </head>
 <body>
     <!-- ====================================================================
@@ -589,12 +597,23 @@
         </div>
     </div>
 
+    <!-- 앱 설치(홈 화면에 추가) 안내 배너 -->
+    <div id="install-banner" class="install-banner" role="dialog" aria-label="앱 설치 안내">
+        <img src="./icons/icon-192.png" alt="" class="install-banner-icon">
+        <div class="install-banner-text">
+            <strong>대똥여지도를 앱처럼 쓰기</strong>
+            <span id="install-banner-desc">홈 화면에 추가하면 바로 열 수 있어요.</span>
+        </div>
+        <button type="button" id="btn-install-app" class="icon-btn primary">설치</button>
+        <button type="button" id="btn-install-close" class="install-banner-close" aria-label="닫기">×</button>
+    </div>
+
     <!-- 토스트 알림 컨테이너 -->
     <div id="toast-container" class="toast-container"></div>
 
     <!-- App Scripts -->
-    <script src="./js/config.js?v=20261119c"></script>
-    <script src="./js/db.js?v=20261119c"></script>
-    <script src="./js/app.js?v=20261119c"></script>
+    <script src="./js/config.js?v=20261119d"></script>
+    <script src="./js/db.js?v=20261119d"></script>
+    <script src="./js/app.js?v=20261119d"></script>
 </body>
 </html>

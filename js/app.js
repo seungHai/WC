@@ -1929,6 +1929,83 @@
     // ========================================================================
     // 이벤트 리스너 초기화
     // ========================================================================
+    // ========================================================================
+    // PWA: 서비스 워커 등록 + 홈 화면에 추가(앱 설치) 안내
+    // ========================================================================
+    const INSTALL_DISMISS_KEY = 'wc_install_dismissed_at';
+    let deferredInstallPrompt = null;
+
+    function isStandaloneApp() {
+        return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    }
+
+    function wasInstallBannerDismissed() {
+        try {
+            const at = Number(localStorage.getItem(INSTALL_DISMISS_KEY) || 0);
+            return Date.now() - at < 7 * 24 * 60 * 60 * 1000; // 닫으면 7일간 다시 안 띄움
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function hideInstallBanner(remember) {
+        const banner = document.getElementById('install-banner');
+        if (banner) banner.classList.remove('show');
+        if (remember) {
+            try { localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now())); } catch (e) { /* 무시 */ }
+        }
+    }
+
+    function showInstallBanner(desc, showInstallBtn) {
+        const banner = document.getElementById('install-banner');
+        if (!banner || isStandaloneApp() || wasInstallBannerDismissed()) return;
+        document.getElementById('install-banner-desc').innerHTML = desc;
+        document.getElementById('btn-install-app').style.display = showInstallBtn ? '' : 'none';
+        banner.classList.add('show');
+    }
+
+    if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => console.warn('서비스 워커 등록 실패:', err));
+        });
+    }
+
+    // 안드로이드(크롬/삼성 인터넷/엣지): 브라우저가 설치 가능하다고 알려주면 설치 버튼 노출
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        showInstallBanner('홈 화면에 추가하면 앱처럼 바로 열 수 있어요.', true);
+    });
+
+    window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        hideInstallBanner(true);
+        showToast('📲 대똥여지도가 홈 화면에 추가되었습니다!');
+    });
+
+    function initInstallPrompt() {
+        bindById('btn-install-app', 'click', async () => {
+            if (!deferredInstallPrompt) return;
+            deferredInstallPrompt.prompt();
+            const choice = await deferredInstallPrompt.userChoice;
+            deferredInstallPrompt = null;
+            hideInstallBanner(choice.outcome !== 'accepted');
+        });
+        bindById('btn-install-close', 'click', () => hideInstallBanner(true));
+
+        // 아이폰/아이패드는 자동 설치 창이 없으므로 직접 추가하는 방법을 안내
+        const ua = navigator.userAgent;
+        const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (isIOS && !isStandaloneApp()) {
+            const isInApp = /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(ua);
+            const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|Whale/i.test(ua) && !isInApp;
+            const desc = isSafari
+                ? '하단 <b>공유 버튼(⬆️)</b> → <b>"홈 화면에 추가"</b>를 눌러주세요.'
+                : '<b>사파리(Safari)</b>로 연 뒤 <b>공유(⬆️)</b> → <b>"홈 화면에 추가"</b>를 눌러주세요.';
+            setTimeout(() => showInstallBanner(desc, false), 1500);
+        }
+    }
+
     // 요소가 없어도(캐시된 구버전 HTML 등) 예외 없이 건너뛰어 나머지 초기화가 계속되도록 함
     function bindById(id, type, handler) {
         const el = document.getElementById(id);
@@ -1962,6 +2039,12 @@
             initBottomSheet();
         } catch (err) {
             console.error('바텀시트 초기화 실패:', err);
+        }
+
+        try {
+            initInstallPrompt();
+        } catch (err) {
+            console.error('앱 설치 안내 초기화 실패:', err);
         }
 
         initTheme();

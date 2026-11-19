@@ -2044,3 +2044,66 @@ body.picking .custom-zoom-controls {
         justify-content: center;
     }
 }
+
+/* ============================================================================
+ * 7. 앱 설치(홈 화면에 추가) 안내 배너
+ * ============================================================================ */
+.install-banner {
+    position: fixed;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 20px);
+    max-width: 440px;
+    z-index: 2500;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 10px 10px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-lg);
+    animation: fadeUp 0.25s ease;
+}
+
+.install-banner.show {
+    display: flex;
+}
+
+.install-banner-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+
+.install-banner-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
+.install-banner-text strong {
+    font-size: 13.5px;
+    color: var(--text-primary);
+}
+
+.install-banner-close {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
