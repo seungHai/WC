@@ -1443,11 +1443,21 @@ body.picking .custom-zoom-controls {
     font-weight: 800;
 }
 
+/* 모달 안의 form도 flex 컬럼이어야 본문만 스크롤되고 하단 버튼이 잘리지 않음 */
+.modal-dialog > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 .modal-body {
     padding: 20px 22px;
     overflow-y: auto;
     flex: 1 1 auto;
     min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .modal-footer {
@@ -1670,7 +1680,7 @@ body.picking .custom-zoom-controls {
 @media (max-width: 820px) {
     .app-shell {
         flex-direction: column-reverse;
-        --sheet-h: 138px;
+        --sheet-h: 142px;
     }
 
     .lbl-long {
@@ -1703,7 +1713,7 @@ body.picking .custom-zoom-controls {
     }
 
     .side-panel.collapsed {
-        height: 138px;
+        height: 142px;
     }
 
     .side-panel.dragging {
@@ -1717,7 +1727,7 @@ body.picking .custom-zoom-controls {
     .mobile-sheet-handle {
         display: flex;
         justify-content: center;
-        padding: 9px 0 7px;
+        padding: 12px 0 10px; /* 손가락으로 누르기 쉽게 터치 영역 확대 */
         cursor: grab;
         touch-action: none;
     }
@@ -1909,6 +1919,10 @@ body.picking .custom-zoom-controls {
 
     .modal-backdrop {
         padding: 10px;
+    }
+
+    .modal-dialog {
+        max-height: calc(100dvh - 20px);
     }
 
     .modal-header,

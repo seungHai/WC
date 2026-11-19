@@ -1917,7 +1917,41 @@
     // ========================================================================
     // 이벤트 리스너 초기화
     // ========================================================================
+    // 요소가 없어도(캐시된 구버전 HTML 등) 예외 없이 건너뛰어 나머지 초기화가 계속되도록 함
+    function bindById(id, type, handler) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener(type, handler);
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        if (modal) modal.classList.remove('open');
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        // 모달 닫기(×/취소/배경 클릭/ESC)와 바텀시트는 다른 초기화 실패와 무관하게 가장 먼저 연결
+        document.addEventListener('click', (e) => {
+            const closeBtn = e.target.closest('[data-close-modal]');
+            if (closeBtn) {
+                e.preventDefault();
+                closeModal(closeBtn.getAttribute('data-close-modal'));
+                return;
+            }
+            if (e.target.classList && e.target.classList.contains('modal-backdrop')) {
+                e.target.classList.remove('open');
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+        });
+
+        try {
+            initBottomSheet();
+        } catch (err) {
+            console.error('바텀시트 초기화 실패:', err);
+        }
+
         initTheme();
         checkInitialAuth();
 
@@ -1950,7 +1984,7 @@
         });
 
         // 비밀번호 표시/숨기기 토글
-        document.getElementById('btn-toggle-pw').addEventListener('click', () => {
+        bindById('btn-toggle-pw', 'click', () => {
             const pwInput = document.getElementById('login-password');
             const isPw = pwInput.type === 'password';
             pwInput.type = isPw ? 'text' : 'password';
@@ -1958,9 +1992,9 @@
         });
 
         // 2. 상단/사이드바 버튼들
-        document.getElementById('btn-theme-toggle').addEventListener('click', toggleTheme);
+        bindById('btn-theme-toggle', 'click', toggleTheme);
 
-        document.getElementById('btn-logout').addEventListener('click', async () => {
+        bindById('btn-logout', 'click', async () => {
             if (!confirm('로그아웃 하시겠습니까?')) return;
             await window.WCDB.logout();
             showToast('로그아웃 되었습니다.');
@@ -1968,12 +2002,12 @@
         });
 
         // 내 비밀번호 변경 모달
-        document.getElementById('btn-change-my-pw').addEventListener('click', () => {
+        bindById('btn-change-my-pw', 'click', () => {
             document.getElementById('my-pw-form').reset();
             document.getElementById('my-pw-modal').classList.add('open');
         });
 
-        document.getElementById('my-pw-form').addEventListener('submit', async (e) => {
+        bindById('my-pw-form', 'submit', async (e) => {
             e.preventDefault();
             const curPw = document.getElementById('my-cur-pw').value;
             const newPw = document.getElementById('my-new-pw').value;
@@ -2021,9 +2055,9 @@
         });
 
         // 4. 급똥(가까운 변소 찾기) & 화장실 추가 플로팅 버튼 & 우측 상단 +- 줌 버튼
-        document.getElementById('fab-nearest').addEventListener('click', findNearestRestroom);
-        document.getElementById('fab-add-wc').addEventListener('click', () => openRestroomModal(null));
-        document.getElementById('btn-header-add-wc').addEventListener('click', () => openRestroomModal(null));
+        bindById('fab-nearest', 'click', findNearestRestroom);
+        bindById('fab-add-wc', 'click', () => openRestroomModal(null));
+        bindById('btn-header-add-wc', 'click', () => openRestroomModal(null));
 
         const btnZoomIn = document.getElementById('btn-zoom-in');
         const btnZoomOut = document.getElementById('btn-zoom-out');
@@ -2031,15 +2065,15 @@
         if (btnZoomOut) btnZoomOut.addEventListener('click', () => zoomMapBy(-1));
 
         // 5. 화장실 추가/수정 모달 내부 이벤트
-        document.getElementById('wc-separated').addEventListener('change', syncPasswordFieldsVisibility);
-        document.getElementById('btn-pick-on-map').addEventListener('click', startLocationPicking);
-        document.getElementById('btn-cancel-pick').addEventListener('click', () => {
+        bindById('wc-separated', 'change', syncPasswordFieldsVisibility);
+        bindById('btn-pick-on-map', 'click', startLocationPicking);
+        bindById('btn-cancel-pick', 'click', () => {
             stopLocationPicking();
             document.getElementById('wc-modal').classList.add('open');
         });
-        document.getElementById('btn-confirm-pick').addEventListener('click', confirmLocationPicking);
-        document.getElementById('pick-search-form').addEventListener('submit', handlePickSearch);
-        document.getElementById('btn-pick-my-gps').addEventListener('click', () => {
+        bindById('btn-confirm-pick', 'click', confirmLocationPicking);
+        bindById('pick-search-form', 'submit', handlePickSearch);
+        bindById('btn-pick-my-gps', 'click', () => {
             if (!navigator.geolocation) {
                 showToast('브라우저에서 GPS를 지원하지 않습니다.');
                 return;
@@ -2051,9 +2085,9 @@
                 { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
             );
         });
-        document.getElementById('wc-lat').addEventListener('change', handleCoordInputChange);
-        document.getElementById('wc-lng').addEventListener('change', handleCoordInputChange);
-        document.getElementById('btn-use-my-gps').addEventListener('click', () => {
+        bindById('wc-lat', 'change', handleCoordInputChange);
+        bindById('wc-lng', 'change', handleCoordInputChange);
+        bindById('btn-use-my-gps', 'click', () => {
             if (!navigator.geolocation) {
                 showToast('브라우저에서 GPS를 지원하지 않습니다.');
                 return;
@@ -2071,10 +2105,10 @@
                 () => showToast('위치 권한을 허용해주세요.')
             );
         });
-        document.getElementById('wc-form').addEventListener('submit', handleSaveRestroomForm);
+        bindById('wc-form', 'submit', handleSaveRestroomForm);
 
         // 6. 관리자 센터 이벤트
-        document.getElementById('btn-open-admin').addEventListener('click', () => openAdminModal('users'));
+        bindById('btn-open-admin', 'click', () => openAdminModal('users'));
         document.querySelectorAll('.admin-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => switchAdminTab(btn.getAttribute('data-admin-tab')));
         });
@@ -2095,7 +2129,7 @@
         }
 
         // 관리자: 신규 사용자 계정 부여 폼
-        document.getElementById('admin-create-user-form').addEventListener('submit', async (e) => {
+        bindById('admin-create-user-form', 'submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('new-user-id').value.trim();
             const password = document.getElementById('new-user-pw').value;
@@ -2115,7 +2149,7 @@
         });
 
         // 관리자: JSON 백업 내보내기
-        document.getElementById('btn-export-json').addEventListener('click', () => {
+        bindById('btn-export-json', 'click', () => {
             const blob = new Blob([JSON.stringify(state.restrooms, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -2147,7 +2181,7 @@
         }
 
         // 관리자: Supabase 연동 저장
-        document.getElementById('btn-save-supabase').addEventListener('click', async () => {
+        bindById('btn-save-supabase', 'click', async () => {
             const url = document.getElementById('supabase-url-input').value.trim();
             const key = document.getElementById('supabase-key-input').value.trim();
             if (!url || !key) {
@@ -2165,7 +2199,7 @@
             }
         });
 
-        document.getElementById('btn-disconnect-supabase').addEventListener('click', async () => {
+        bindById('btn-disconnect-supabase', 'click', async () => {
             if (!confirm('클라우드 연동을 해제하고 로컬 모드로 전환하시겠습니까?')) return;
             window.WCDB.saveSupabaseCredentials('', '');
             await window.WCDB.logout();
@@ -2174,16 +2208,6 @@
             showLoginScreen();
         });
 
-        // 모달 닫기 공통 버튼
-        document.querySelectorAll('[data-close-modal]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const targetId = btn.getAttribute('data-close-modal');
-                document.getElementById(targetId).classList.remove('open');
-            });
-        });
-
-        // 모바일 바텀 시트 (핸들 탭 + 위아래 스와이프)
-        initBottomSheet();
     });
 
     // ========================================================================
@@ -2197,7 +2221,7 @@
 
     function getSheetSnapHeights() {
         const vh = window.innerHeight;
-        return { collapsed: 138, half: Math.round(vh * 0.46), expanded: Math.round(vh * 0.88) };
+        return { collapsed: 142, half: Math.round(vh * 0.46), expanded: Math.round(vh * 0.88) };
     }
 
     function setSheetState(next) {
@@ -2223,9 +2247,10 @@
         setSheetState(state.sheetState);
         window.addEventListener('resize', () => setSheetState(state.sheetState));
 
+        // 핸들 탭: 열려 있으면 내려서 지도를 크게, 접혀 있으면 중간 높이로 올림
         handle.addEventListener('click', () => {
-            const idx = SHEET_STATES.indexOf(state.sheetState);
-            setSheetState(state.sheetState === 'expanded' ? 'collapsed' : SHEET_STATES[idx + 1]);
+            if (drag.moved) return;
+            setSheetState(state.sheetState === 'collapsed' ? 'half' : 'collapsed');
         });
 
         // 검색창을 누르면 결과 목록이 보이도록 시트를 펼침
