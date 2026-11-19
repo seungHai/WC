@@ -575,6 +575,7 @@ button, input, select, textarea {
 .nearest-banner-title {
     font-size: 14.5px;
     font-weight: 800;
+    line-height: 1.35;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -582,8 +583,30 @@ button, input, select, textarea {
 
 .nearest-banner-sub {
     font-size: 12px;
+    line-height: 1.4;
     opacity: 0.85;
     margin-top: 2px;
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 6px;
+    row-gap: 1px;
+}
+
+.nearest-banner-sub b {
+    white-space: nowrap;
+}
+
+/* 하늘색 배너 우측 '이동' 버튼 */
+.nearest-banner-go {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
 }
 
 /* 화장실 리스트 영역 */
@@ -861,6 +884,59 @@ button, input, select, textarea {
     background: var(--accent);
     color: #ffffff;
     border-color: var(--accent);
+}
+
+/* +- 아래 '내 위치' 버튼 */
+.my-location-btn {
+    margin-top: 4px;
+    color: var(--accent);
+}
+
+.my-location-btn.locating svg {
+    animation: locatePulse 0.9s ease-in-out infinite;
+}
+
+@keyframes locatePulse {
+    50% { opacity: 0.35; }
+}
+
+body.picking .my-location-btn {
+    display: none;
+}
+
+/* 흰색 + 아이콘 (이모지 ➕는 기기마다 색/크기가 달라 CSS로 그림) */
+.plus-icon {
+    position: relative;
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+
+.plus-icon::before,
+.plus-icon::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: #ffffff;
+    border-radius: 2px;
+    transform: translate(-50%, -50%);
+}
+
+.plus-icon::before {
+    width: 100%;
+    height: 2.5px;
+}
+
+.plus-icon::after {
+    width: 2.5px;
+    height: 100%;
+}
+
+.fab-btn .plus-icon {
+    width: 15px;
+    height: 15px;
 }
 
 /* 우측 하단 플로팅 액션 버튼들 */
@@ -1787,6 +1863,11 @@ body.picking .custom-zoom-controls {
 
     .nearest-banner {
         margin: 8px 12px 2px;
+        padding: 10px 12px;
+    }
+
+    .nearest-banner-title {
+        font-size: 14px;
     }
 
     .restroom-list-header {
@@ -1859,8 +1940,13 @@ body.picking .custom-zoom-controls {
     .fab-btn.add-wc {
         width: 44px;
         padding: 0;
+        gap: 0;
         justify-content: center;
-        font-size: 18px;
+    }
+
+    .fab-btn.add-wc .plus-icon {
+        width: 17px;
+        height: 17px;
     }
 
     .detail-sheet {
@@ -1950,5 +2036,11 @@ body.picking .custom-zoom-controls {
 
     .user-pill-bar .icon-btn {
         padding: 0 9px;
+    }
+
+    #btn-header-add-wc {
+        width: 34px;
+        padding: 0;
+        justify-content: center;
     }
 }

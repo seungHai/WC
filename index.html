@@ -19,7 +19,7 @@
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7470571035558189" crossorigin="anonymous"></script>
 
     <!-- App Stylesheet -->
-    <link rel="stylesheet" href="./css/style.css?v=20261119a">
+    <link rel="stylesheet" href="./css/style.css?v=20261119b">
 </head>
 <body>
     <!-- ====================================================================
@@ -106,7 +106,7 @@
                             👑<span class="btn-label"> 관리자 센터</span>
                         </button>
                         <button type="button" id="btn-header-add-wc" class="icon-btn primary" title="화장실 제보">
-                            ➕<span class="btn-label"> 화장실 제보</span>
+                            <span class="plus-icon" aria-hidden="true"></span><span class="btn-label">화장실 제보</span>
                         </button>
                         <button type="button" id="btn-theme-toggle" class="icon-btn" title="다크모드 전환">
                             🌙 다크
@@ -177,6 +177,12 @@
             <div class="custom-zoom-controls">
                 <button type="button" id="btn-zoom-in" class="custom-zoom-btn" title="확대">+</button>
                 <button type="button" id="btn-zoom-out" class="custom-zoom-btn" title="축소">−</button>
+                <button type="button" id="btn-my-location" class="custom-zoom-btn my-location-btn" title="내 위치로 이동" aria-label="내 위치로 이동">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>
+                        <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>
+                    </svg>
+                </button>
             </div>
 
             <!-- 지도에서 위치 찍기 모드: 상단 장소/주소/좌표 검색 패널 -->
@@ -222,7 +228,7 @@
                     🚨 <span class="lbl-long">급똥! 가까운 변소 찾기</span><span class="lbl-short">급똥!</span>
                 </button>
                 <button type="button" id="fab-add-wc" class="fab-btn add-wc" title="새 화장실 등록">
-                    ➕<span class="lbl-long"> 새 화장실 등록</span>
+                    <span class="plus-icon" aria-hidden="true"></span><span class="lbl-long">새 화장실 등록</span>
                 </button>
             </div>
         </main>
@@ -587,8 +593,8 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- App Scripts -->
-    <script src="./js/config.js?v=20261119a"></script>
-    <script src="./js/db.js?v=20261119a"></script>
-    <script src="./js/app.js?v=20261119a"></script>
+    <script src="./js/config.js?v=20261119b"></script>
+    <script src="./js/db.js?v=20261119b"></script>
+    <script src="./js/app.js?v=20261119b"></script>
 </body>
 </html>

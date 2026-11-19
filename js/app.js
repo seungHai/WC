@@ -559,9 +559,12 @@
             <div class="nearest-banner-info">
                 <div class="nearest-banner-tag">🚨 내 위치에서 가장 가까운 화장실</div>
                 <div class="nearest-banner-title">${escapeHtml(nearest.name)} (${escapeHtml(nearest.location_detail || nearest.floor)})</div>
-                <div class="nearest-banner-sub">${formatDistance(nearest.distance)} · ${formatWalkingTime(nearest.distance)} · <b>${escapeHtml(pwSummary)}</b></div>
+                <div class="nearest-banner-sub">
+                    <span>${formatDistance(nearest.distance)} · ${formatWalkingTime(nearest.distance)}</span>
+                    <b>${escapeHtml(pwSummary)}</b>
+                </div>
             </div>
-            <span style="font-size:18px;font-weight:800;">이동 →</span>
+            <span class="nearest-banner-go">이동 →</span>
         `;
         banner.onclick = () => selectRestroom(nearest.id, true);
     }
@@ -1129,6 +1132,31 @@
             },
             function () {
                 fallbackToMapCenterNearest('GPS 위치 권한이 꺼져 있어 현재 보고 계신 지도 중심 기준으로 가장 가까운 화장실을 찾았습니다.');
+            },
+            { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
+        );
+    }
+
+    // 지도 우측 '내 위치' 버튼: GPS 위치로 지도 이동 + 내 위치 마커 표시
+    function goToMyLocation() {
+        if (!navigator.geolocation) {
+            showToast('이 브라우저는 GPS를 지원하지 않습니다.');
+            return;
+        }
+        const btn = document.getElementById('btn-my-location');
+        if (btn) btn.classList.add('locating');
+        navigator.geolocation.getCurrentPosition(
+            function (pos) {
+                if (btn) btn.classList.remove('locating');
+                const userCoords = [pos.coords.longitude, pos.coords.latitude];
+                state.userLocation = userCoords;
+                placeUserGpsMarker(userCoords);
+                moveMapTo(userCoords[0], userCoords[1], 17);
+                recalculateDistancesAndFilter();
+            },
+            function () {
+                if (btn) btn.classList.remove('locating');
+                showToast('위치 권한을 허용해주세요.');
             },
             { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
         );
@@ -2063,6 +2091,7 @@
         const btnZoomOut = document.getElementById('btn-zoom-out');
         if (btnZoomIn) btnZoomIn.addEventListener('click', () => zoomMapBy(1));
         if (btnZoomOut) btnZoomOut.addEventListener('click', () => zoomMapBy(-1));
+        bindById('btn-my-location', 'click', goToMyLocation);
 
         // 5. 화장실 추가/수정 모달 내부 이벤트
         bindById('wc-separated', 'change', syncPasswordFieldsVisibility);
