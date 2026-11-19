@@ -1999,9 +1999,10 @@
         if (isIOS && !isStandaloneApp()) {
             const isInApp = /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(ua);
             const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|Whale/i.test(ua) && !isInApp;
+            // iOS 26부터 사파리 공유 버튼이 주소창 옆 ··· 메뉴 안으로 이동함
             const desc = isSafari
-                ? '하단 <b>공유 버튼(⬆️)</b> → <b>"홈 화면에 추가"</b>를 눌러주세요.'
-                : '<b>사파리(Safari)</b>로 연 뒤 <b>공유(⬆️)</b> → <b>"홈 화면에 추가"</b>를 눌러주세요.';
+                ? '주소창 옆 <b>···</b> → <b>공유</b> → <b>"홈 화면에 추가"</b>를 눌러주세요. (구버전: 하단 공유 ⬆️)'
+                : '<b>사파리(Safari)</b>로 열어서 주소창 옆 <b>···</b> → <b>공유</b> → <b>"홈 화면에 추가"</b>를 눌러주세요.';
             setTimeout(() => showInstallBanner(desc, false), 1500);
         }
     }
