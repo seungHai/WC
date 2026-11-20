@@ -159,8 +159,8 @@
         updateAuthModeBadge();
     }
 
-    // 브라우저 GPS 현재 좌표 1회 요청 헬퍼 (실패/거부 시 null 반환)
-    function requestCurrentGpsCoords(timeoutMs = 5500) {
+    // 브라우저 GPS 현재 좌표 1회 요청 헬퍼 (캐시된 이전 좌표를 재사용하지 않도록 maximumAge: 0 설정)
+    function requestCurrentGpsCoords(timeoutMs = 7500) {
         return new Promise((resolve) => {
             if (!navigator.geolocation) {
                 resolve(null);
@@ -174,7 +174,7 @@
                     });
                 },
                 () => resolve(null),
-                { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 30000 }
+                { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 }
             );
         });
     }
@@ -2299,7 +2299,7 @@
                 let gpsCoords = null;
                 if (useGps) {
                     submitBtn.textContent = '📡 현재 위치(GPS) 확인 중...';
-                    gpsCoords = await requestCurrentGpsCoords(5000);
+                    gpsCoords = await requestCurrentGpsCoords(7500);
                 }
 
                 submitBtn.textContent = '인증 확인 중...';

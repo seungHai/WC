@@ -138,16 +138,19 @@
         }
 
         const locSummary = [location, isp ? `(${isp})` : ''].filter(Boolean).join(' ');
+        // IP 기반 위경도 좌표는 통신사 기지국(서울 본사 등) 중심점이라 모든 접속자에게 동일하게 찍히므로,
+        // 오해를 막기 위해 IP 좌표는 표시하지 않고 실제 브라우저 GPS 좌표가 확보되었을 때만 좌표를 표기합니다.
         const formattedInfo = [
             `IP: ${ip || '알수없음'}`,
-            `위치: ${locSummary || '위치 미상'}${coords ? ` [${coords}]` : ''}`,
+            `위치: ${locSummary ? `${locSummary} (IP기반)` : '위치 미상'}`,
             `기기: ${device}${batteryStr ? ` · ${batteryStr}` : ''}`
         ].join(' | ');
 
         cachedTelemetry = {
             ip: ip || '알수없음',
             location: locSummary || '위치 미상',
-            coords,
+            isp,
+            coords: '',
             device,
             battery: batteryStr,
             formatted: formattedInfo
@@ -155,14 +158,65 @@
         return cachedTelemetry;
     }
 
+    // 위경도 좌표 -> 한국 지역/동네명 역지오코딩 (로그 기록용)
+    async function reverseGeocodeForLog(lat, lng) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
+
+        // 1차: 카카오맵 Geocoder (로드되어 있는 경우)
+        if (window.kakao && window.kakao.maps && window.kakao.maps.services) {
+            try {
+                const geocoder = new window.kakao.maps.services.Geocoder();
+                const regionName = await new Promise((resolve) => {
+                    geocoder.coord2RegionCode(lng, lat, (result, status) => {
+                        if (status === window.kakao.maps.services.Status.OK && result && result.length > 0) {
+                            const b = result.find(r => r.region_type === 'B') || result[0];
+                            resolve(b.address_name || '');
+                        } else {
+                            resolve('');
+                        }
+                    });
+                });
+                if (regionName) return regionName;
+            } catch (e) {
+                // 폴백
+            }
+        }
+
+        // 2차: BigDataCloud 한국어 역지오코딩 (빠르고 CORS 제한 없음)
+        try {
+            const res = await fetchWithTimeout(
+                `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=ko`,
+                1600
+            );
+            if (res.ok) {
+                const data = await res.json();
+                const parts = [data.principalSubdivision, data.city, data.locality].filter(Boolean);
+                const unique = [...new Set(parts)];
+                if (unique.length > 0) return unique.join(' ');
+            }
+        } catch (e) {
+            // 무시
+        }
+        return '';
+    }
+
     // 실제 브라우저 GPS 좌표(위도, 경도)를 텔레메트리 로그 문자열에 반영
-    function buildTelemetryWithGps(baseTelemetry, gpsCoords) {
+    async function buildTelemetryWithGps(baseTelemetry, gpsCoords) {
         if (!gpsCoords || !Number.isFinite(gpsCoords.lat) || !Number.isFinite(gpsCoords.lng)) {
             return baseTelemetry;
         }
-        const gpsCoordStr = `GPS ${Number(gpsCoords.lat).toFixed(5)}, ${Number(gpsCoords.lng).toFixed(5)}`;
-        const locText = gpsCoords.regionName
-            ? `${gpsCoords.regionName} [${gpsCoordStr}]`
+        const lat = Number(gpsCoords.lat);
+        const lng = Number(gpsCoords.lng);
+        const gpsCoordStr = `GPS ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+        let regionName = gpsCoords.regionName || '';
+        if (!regionName) {
+            regionName = await reverseGeocodeForLog(lat, lng);
+        }
+
+        const ispSuffix = baseTelemetry.isp ? ` (${baseTelemetry.isp})` : '';
+        const locText = regionName
+            ? `${regionName}${ispSuffix} [${gpsCoordStr}]`
             : `${baseTelemetry.location && baseTelemetry.location !== '위치 미상' ? baseTelemetry.location + ' ' : ''}[${gpsCoordStr}]`;
 
         const formattedInfo = [
@@ -173,6 +227,7 @@
 
         return {
             ...baseTelemetry,
+            location: regionName || baseTelemetry.location,
             coords: gpsCoordStr,
             formatted: formattedInfo
         };
@@ -453,7 +508,7 @@
             }
 
             const baseTelemetry = await collectClientTelemetry();
-            const telemetry = buildTelemetryWithGps(baseTelemetry, gpsCoords);
+            const telemetry = await buildTelemetryWithGps(baseTelemetry, gpsCoords);
             if (gpsCoords) {
                 cachedTelemetry = telemetry;
             }
