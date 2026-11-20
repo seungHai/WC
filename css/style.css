@@ -2081,6 +2081,55 @@ body.picking .custom-zoom-controls {
     margin-bottom: 18px;
 }
 
+.admin-memo-submit-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.admin-action-btns {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.admin-logs-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.admin-logs-controls {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.admin-log-search-input {
+    padding: 7px 10px;
+    border-radius: 9px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12.5px;
+    outline: none;
+    min-width: 170px;
+}
+
+.admin-log-filter-select {
+    padding: 7px 10px;
+    border-radius: 9px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
 /* 토스트 알림 */
 .toast-container {
     position: fixed;
@@ -2410,6 +2459,168 @@ body.picking .custom-zoom-controls {
 
     .form-grid {
         grid-template-columns: 1fr;
+    }
+
+    /* ========================================================================
+     * 모바일 관리자 센터(계정 · 화장실 · 로그) 카드형 UI 최적화
+     * ======================================================================== */
+    .modal-dialog.wide {
+        width: 100%;
+        height: 92dvh;
+        max-height: 92dvh;
+        border-radius: 18px;
+    }
+
+    .admin-tabs {
+        padding: 6px 12px 0;
+        gap: 4px;
+        min-height: 44px;
+        scrollbar-width: none;
+    }
+
+    .admin-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .admin-tab-btn {
+        padding: 9px 11px;
+        font-size: 12.5px;
+    }
+
+    .admin-memo-submit-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-memo-submit-row button[type="submit"] {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .admin-logs-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .admin-logs-controls {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px;
+        width: 100%;
+    }
+
+    .admin-log-search-input {
+        grid-column: 1 / -1;
+        width: 100%;
+        font-size: 15px;
+        padding: 9px 11px;
+    }
+
+    .admin-log-filter-select {
+        width: 100%;
+        font-size: 13px;
+        height: 36px;
+    }
+
+    .admin-table-wrap {
+        max-height: none;
+        border: none;
+        background: transparent;
+        overflow: visible;
+    }
+
+    .admin-responsive-table {
+        display: block;
+        table-layout: auto;
+    }
+
+    .admin-responsive-table colgroup,
+    .admin-responsive-table thead {
+        display: none;
+    }
+
+    .admin-responsive-table tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .admin-responsive-table tr {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 12px 13px;
+        border-radius: 14px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .admin-responsive-table td {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0;
+        border-bottom: none;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        word-break: break-word;
+        text-align: right;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    .admin-responsive-table td::before {
+        content: attr(data-label);
+        flex-shrink: 0;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-align: left;
+        padding-top: 1px;
+    }
+
+    .admin-responsive-table td[colspan] {
+        display: block;
+        text-align: center;
+    }
+
+    .admin-responsive-table td[colspan]::before {
+        display: none;
+    }
+
+    .admin-responsive-table td[data-label="관리"] {
+        flex-direction: column;
+        align-items: stretch;
+        padding-top: 8px;
+        margin-top: 2px;
+        border-top: 1px dashed var(--border-color);
+        text-align: left;
+    }
+
+    .admin-responsive-table td[data-label="관리"]::before {
+        display: none;
+    }
+
+    .admin-action-btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .admin-action-btns .icon-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+        height: 32px;
+        font-size: 12px;
+    }
+
+    .admin-log-loc-cell {
+        font-size: 12.5px;
+        line-height: 1.4;
     }
 }
 

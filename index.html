@@ -27,7 +27,7 @@
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7470571035558189" crossorigin="anonymous"></script>
 
     <!-- App Stylesheet -->
-    <link rel="stylesheet" href="./css/style.css?v=20261120d">
+    <link rel="stylesheet" href="./css/style.css?v=20261120e">
 </head>
 <body>
     <!-- ====================================================================
@@ -402,7 +402,7 @@
                                     </select>
                                 </div>
                             </div>
-                            <div style="display:flex; gap:10px; align-items:flex-end;">
+                            <div class="admin-memo-submit-row">
                                 <div class="form-field" style="flex:1; margin-bottom:0;">
                                     <label for="new-user-memo">관리자 메모 (선택)</label>
                                     <input id="new-user-memo" type="text" placeholder="예: 대학 동기 단톡방 공유용">
@@ -416,7 +416,7 @@
 
                     <h4 style="margin-bottom:8px; font-size:14px;">📋 발급된 사용자 계정 목록</h4>
                     <div class="admin-table-wrap">
-                        <table class="admin-table">
+                        <table class="admin-table admin-responsive-table">
                             <colgroup>
                                 <col style="width: 14%;">
                                 <col style="width: 14%;">
@@ -452,7 +452,7 @@
                         <button type="button" id="btn-export-json" class="icon-btn">📦 전체 데이터 JSON 백업 다운로드</button>
                     </div>
                     <div class="admin-table-wrap">
-                        <table class="admin-table">
+                        <table class="admin-table admin-responsive-table">
                             <colgroup>
                                 <col style="width: 21%;">
                                 <col style="width: 27%;">
@@ -478,22 +478,29 @@
 
                 <!-- 탭 3: 접속 및 활동 감사 로그 -->
                 <div id="admin-tab-logs" style="display: none;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-                        <span style="font-size:13px; color:var(--text-secondary);">
-                            로그인 성공/실패, 화장실 등록·수정·삭제, 계정 발급/변경 내역이 DB에 자동 기록됩니다.
+                    <div class="admin-logs-toolbar">
+                        <span style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
+                            로그인, 화장실 등록·수정·삭제, 평가 및 계정 변경 내역이 기록됩니다.
                         </span>
-                        <div style="display:flex; gap:6px;">
-                            <select id="admin-log-filter" style="padding:7px 10px; border-radius:9px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:12.5px; font-weight:700;">
-                                <option value="all">전체 로그 보기</option>
-                                <option value="LOGIN">🔑 로그인/로그아웃 기록</option>
-                                <option value="RESTROOM">🚽 화장실 추가/수정/삭제</option>
-                                <option value="USER">👤 계정 발급/관리 기록</option>
+                        <div class="admin-logs-controls">
+                            <input
+                                id="admin-log-search"
+                                type="text"
+                                placeholder="🔍 계정·IP·위치·내역 검색..."
+                                class="admin-log-search-input"
+                            >
+                            <select id="admin-log-filter" class="admin-log-filter-select">
+                                <option value="all">전체 로그</option>
+                                <option value="LOGIN">🔑 로그인/로그아웃</option>
+                                <option value="RESTROOM">🚽 화장실 관리</option>
+                                <option value="REVIEW">🌟 화장실 평가</option>
+                                <option value="USER">👤 계정 관리</option>
                             </select>
                             <button type="button" id="btn-refresh-logs" class="icon-btn">🔄 새로고침</button>
                         </div>
                     </div>
-                    <div class="admin-table-wrap">
-                        <table class="admin-table">
+                    <div class="admin-table-wrap admin-logs-table-wrap">
+                        <table class="admin-table admin-responsive-table">
                             <colgroup>
                                 <col style="width: 17%;">
                                 <col style="width: 14%;">
@@ -689,8 +696,8 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- App Scripts -->
-    <script src="./js/config.js?v=20261120d"></script>
-    <script src="./js/db.js?v=20261120d"></script>
-    <script src="./js/app.js?v=20261120d"></script>
+    <script src="./js/config.js?v=20261120e"></script>
+    <script src="./js/db.js?v=20261120e"></script>
+    <script src="./js/app.js?v=20261120e"></script>
 </body>
 </html>

@@ -2128,21 +2128,21 @@
                 const knownPw = state.lastCreatedCredentials[u.username] || (u.username === 'user01' ? '1234' : '');
                 return `
                     <tr>
-                        <td><b>${escapeHtml(u.username)}</b></td>
-                        <td>${escapeHtml(u.display_name)}</td>
-                        <td>
+                        <td data-label="아이디"><b>${escapeHtml(u.username)}</b></td>
+                        <td data-label="이름/별칭">${escapeHtml(u.display_name)}</td>
+                        <td data-label="권한">
                             <span class="role-badge ${u.role === 'admin' ? 'admin' : ''}">
                                 ${u.role === 'admin' ? '관리자' : '일반회원'}
                             </span>
                         </td>
-                        <td>
+                        <td data-label="상태">
                             <span style="font-weight:700; color:${u.is_active ? 'var(--success)' : 'var(--danger)'};">
                                 ${u.is_active ? '● 활성' : '⛔ 정지됨'}
                             </span>
                         </td>
-                        <td style="color:var(--text-secondary); font-size:12px;">${escapeHtml(u.memo || '-')}</td>
-                        <td>
-                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <td data-label="메모" style="color:var(--text-secondary); font-size:12px;">${escapeHtml(u.memo || '-')}</td>
+                        <td data-label="관리">
+                            <div class="admin-action-btns">
                                 <button type="button" class="icon-btn" data-invite-user="${escapeHtml(u.username)}" data-invite-name="${escapeHtml(u.display_name)}" data-invite-pw="${escapeHtml(knownPw)}">
                                     📋 계정안내 복사
                                 </button>
@@ -2250,17 +2250,17 @@
             const detailText = `${r.location_detail || '-'} (${r.floor || '1층'})`;
             return `
                 <tr>
-                    <td title="${escapeHtml(r.name)}"><b>${escapeHtml(r.name)}</b></td>
-                    <td title="${escapeHtml(detailText)}">${escapeHtml(detailText)}</td>
-                    <td title="${escapeHtml(r.gender_separated ? `남:${r.pw_male} / 여:${r.pw_female}` : r.pw_common)}">${pwHtml}</td>
-                    <td>
+                    <td data-label="장소명" title="${escapeHtml(r.name)}"><b>${escapeHtml(r.name)}</b></td>
+                    <td data-label="상세위치" title="${escapeHtml(detailText)}">${escapeHtml(detailText)}</td>
+                    <td data-label="비밀번호" title="${escapeHtml(r.gender_separated ? `남:${r.pw_male} / 여:${r.pw_female}` : r.pw_common)}">${pwHtml}</td>
+                    <td data-label="휴지">
                         <span class="meta-tag ${r.has_paper ? '' : 'warn'}">
                             ${r.has_paper ? '🧻 구비' : '⚠️ 미구비'}
                         </span>
                     </td>
-                    <td>${escapeHtml(r.created_by || 'admin')}</td>
-                    <td>
-                        <div style="display:flex; gap:6px;">
+                    <td data-label="등록자">${escapeHtml(r.created_by || 'admin')}</td>
+                    <td data-label="관리">
+                        <div class="admin-action-btns">
                             <button type="button" class="icon-btn" style="height:30px; padding:0 9px;" data-admin-edit-wc="${escapeHtml(r.id)}">수정</button>
                             <button type="button" class="icon-btn" style="height:30px; padding:0 9px; color:var(--danger);" data-admin-del-wc="${escapeHtml(r.id)}">삭제</button>
                         </div>
@@ -2333,10 +2333,23 @@
             const logs = await window.WCDB.adminGetLogs(250);
             const filterEl = document.getElementById('admin-log-filter');
             const filterVal = filterEl ? filterEl.value : 'all';
+            const searchEl = document.getElementById('admin-log-search');
+            const searchVal = (searchEl ? searchEl.value : '').trim().toLowerCase();
 
             const filtered = logs.filter(log => {
-                if (filterVal === 'all') return true;
-                return (log.action_type || '').startsWith(filterVal);
+                if (filterVal !== 'all') {
+                    const action = log.action_type || '';
+                    if (filterVal === 'LOGIN') {
+                        if (!action.startsWith('LOGIN') && action !== 'LOGOUT' && action !== 'PASSWORD_CHANGE') return false;
+                    } else if (!action.startsWith(filterVal)) {
+                        return false;
+                    }
+                }
+                if (searchVal) {
+                    const hay = `${log.actor_username || ''} ${log.actor_display_name || ''} ${log.target_name || ''} ${log.detail || ''} ${log.device_info || ''} ${log.action_type || ''}`.toLowerCase();
+                    if (!hay.includes(searchVal)) return false;
+                }
+                return true;
             });
 
             if (filtered.length === 0) {
@@ -2370,12 +2383,12 @@
 
                 return `
                     <tr data-log-idx="${idx}" style="cursor:pointer;" title="클릭하면 전체 접속 IP·위치·단말기 상세 정보를 봅니다">
-                        <td style="font-size:12px; color:var(--text-secondary);">${escapeHtml(formatKoreanDateTime(log.created_at))}</td>
-                        <td>${getLogBadgeHtml(log.action_type)}</td>
-                        <td title="${escapeHtml(actorText)}"><b>${escapeHtml(actorText)}</b></td>
-                        <td style="font-weight:700; color:var(--accent);" title="${escapeHtml(ipLocText)}">${escapeHtml(ipLocText)}</td>
-                        <td style="font-size:12px; color:var(--text-secondary);" title="${escapeHtml(devEnvText)}">${escapeHtml(devEnvText)}</td>
-                        <td title="${escapeHtml(summaryDetail)}">${escapeHtml(summaryDetail)}</td>
+                        <td data-label="일시" style="font-size:12px; color:var(--text-secondary);">${escapeHtml(formatKoreanDateTime(log.created_at))}</td>
+                        <td data-label="구분">${getLogBadgeHtml(log.action_type)}</td>
+                        <td data-label="계정" title="${escapeHtml(actorText)}"><b>${escapeHtml(actorText)}</b></td>
+                        <td data-label="접속 IP·위치" class="admin-log-loc-cell" style="font-weight:700; color:var(--accent);" title="${escapeHtml(ipLocText)}">${escapeHtml(ipLocText)}</td>
+                        <td data-label="단말기·환경" style="font-size:12px; color:var(--text-secondary);" title="${escapeHtml(devEnvText)}">${escapeHtml(devEnvText)}</td>
+                        <td data-label="대상·내역" title="${escapeHtml(summaryDetail)}">${escapeHtml(summaryDetail)}</td>
                     </tr>
                 `;
             }).join('');
@@ -2767,6 +2780,11 @@
         const adminLogFilter = document.getElementById('admin-log-filter');
         if (adminLogFilter) {
             adminLogFilter.addEventListener('change', () => renderAdminLogsTable());
+        }
+
+        const adminLogSearch = document.getElementById('admin-log-search');
+        if (adminLogSearch) {
+            adminLogSearch.addEventListener('input', () => renderAdminLogsTable());
         }
 
         const btnRefreshLogs = document.getElementById('btn-refresh-logs');
