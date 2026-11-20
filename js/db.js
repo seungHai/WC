@@ -12,6 +12,7 @@
         LOCAL_USERS: 'wc_local_users_v2',
         LOCAL_SESSIONS: 'wc_local_sessions_v2',
         LOCAL_RESTROOMS: 'wc_local_restrooms_v2',
+        LOCAL_REVIEWS: 'wc_local_reviews_v2',
         LOCAL_LOGS: 'wc_local_audit_logs_v2',
         FAVORITES: 'wc_favorites_v2'
     };
@@ -1129,6 +1130,189 @@
             }
             localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favs));
             return idx === -1;
+        }
+
+        // ====================================================================
+        // 5. 화장실 평가 (별점 1~5 · 빠른 상태 태그 · 한줄평 코멘트)
+        // ====================================================================
+        getLocalAllReviews() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_KEYS.LOCAL_REVIEWS) || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+
+        saveLocalAllReviews(reviews) {
+            localStorage.setItem(STORAGE_KEYS.LOCAL_REVIEWS, JSON.stringify(reviews));
+        }
+
+        computeLocalReviewSummaries() {
+            const reviews = this.getLocalAllReviews();
+            const map = {};
+            reviews.forEach(r => {
+                const rid = String(r.restroom_id || '');
+                if (!rid) return;
+                if (!map[rid]) {
+                    map[rid] = { sum: 0, count: 0 };
+                }
+                map[rid].sum += Number(r.rating) || 0;
+                map[rid].count += 1;
+            });
+            const result = {};
+            Object.keys(map).forEach(rid => {
+                const item = map[rid];
+                result[rid] = {
+                    avg_rating: Number((item.sum / item.count).toFixed(1)),
+                    review_count: item.count
+                };
+            });
+            return result;
+        }
+
+        async getReviewSummaries() {
+            const token = this.getToken();
+            if (!token) return {};
+
+            if (this.isCloudMode()) {
+                try {
+                    const { data, error } = await this.supabase.rpc('rpc_get_review_summaries', {
+                        p_token: token
+                    });
+                    if (!error && Array.isArray(data)) {
+                        const map = {};
+                        data.forEach(row => {
+                            if (row && row.restroom_id) {
+                                map[String(row.restroom_id)] = {
+                                    avg_rating: Number(row.avg_rating) || 0,
+                                    review_count: Number(row.review_count) || 0
+                                };
+                            }
+                        });
+                        // 클라우드와 로컬 폴백 데이터 병합
+                        const localMap = this.computeLocalReviewSummaries();
+                        return { ...localMap, ...map };
+                    }
+                } catch (e) {
+                    // DB에 아직 테이블이 없는 경우 로컬 요약으로 폴백
+                }
+            }
+            return this.computeLocalReviewSummaries();
+        }
+
+        async getRestroomReviews(restroomId) {
+            const token = this.getToken();
+            if (!token || !restroomId) return [];
+            const rid = String(restroomId);
+
+            if (this.isCloudMode()) {
+                try {
+                    const { data, error } = await this.supabase.rpc('rpc_get_restroom_reviews', {
+                        p_token: token,
+                        p_restroom_id: rid
+                    });
+                    if (!error && Array.isArray(data)) {
+                        return data;
+                    }
+                } catch (e) {
+                    // 폴백
+                }
+            }
+
+            return this.getLocalAllReviews()
+                .filter(r => String(r.restroom_id) === rid)
+                .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+        }
+
+        async saveRestroomReview(payload) {
+            const token = this.getToken();
+            if (!token) throw new Error('로그인이 필요합니다.');
+
+            const rid = String(payload.restroom_id || '').trim();
+            const rname = String(payload.restroom_name || '').trim();
+            const rating = Math.max(1, Math.min(5, Number(payload.rating) || 5));
+            const tags = Array.isArray(payload.tags) ? payload.tags : [];
+            const comment = String(payload.comment || '').trim();
+
+            if (!rid) throw new Error('평가할 화장실 정보가 없습니다.');
+
+            if (this.isCloudMode()) {
+                const { data, error } = await this.supabase.rpc('rpc_upsert_restroom_review', {
+                    p_token: token,
+                    p_restroom_id: rid,
+                    p_restroom_name: rname,
+                    p_rating: rating,
+                    p_tags: tags,
+                    p_comment: comment
+                });
+                if (!error && data) {
+                    return data;
+                }
+                // 만약 클라우드 DB에 아직 restroom_reviews 테이블이 생성되지 않은 경우 로컬 스토리지로 안전하게 저장
+                if (error && !/function.*rpc_upsert_restroom_review|relation.*restroom_reviews/i.test(error.message || '')) {
+                    throw new Error(error.message || '평가 등록에 실패했습니다.');
+                }
+            }
+
+            const user = this.currentUser || (await this.verifySession());
+            if (!user) throw new Error('로그인이 필요합니다.');
+
+            const all = this.getLocalAllReviews();
+            const nowIso = new Date().toISOString();
+            const existingIdx = all.findIndex(r => String(r.restroom_id) === rid && r.username === user.username);
+
+            let savedItem;
+            if (existingIdx !== -1) {
+                all[existingIdx] = {
+                    ...all[existingIdx],
+                    display_name: user.display_name,
+                    rating,
+                    tags,
+                    comment,
+                    updated_at: nowIso
+                };
+                savedItem = all[existingIdx];
+            } else {
+                savedItem = {
+                    id: 'rev-' + generateUUID(),
+                    restroom_id: rid,
+                    username: user.username,
+                    display_name: user.display_name,
+                    rating,
+                    tags,
+                    comment,
+                    created_at: nowIso,
+                    updated_at: nowIso
+                };
+                all.unshift(savedItem);
+            }
+
+            this.saveLocalAllReviews(all);
+            this.writeLocalLog('REVIEW_UPSERT', user.username, user.display_name, rname || rid, `별점 ${rating}점 평가 등록 (${comment.slice(0, 30)})`);
+            return savedItem;
+        }
+
+        async deleteRestroomReview(reviewId) {
+            const token = this.getToken();
+            if (!token) throw new Error('로그인이 필요합니다.');
+
+            if (this.isCloudMode() && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(String(reviewId))) {
+                const { error } = await this.supabase.rpc('rpc_delete_restroom_review', {
+                    p_token: token,
+                    p_review_id: reviewId
+                });
+                if (!error) return true;
+            }
+
+            const user = this.currentUser || (await this.verifySession());
+            const all = this.getLocalAllReviews();
+            const target = all.find(r => r.id === reviewId);
+            const filtered = all.filter(r => r.id !== reviewId);
+            this.saveLocalAllReviews(filtered);
+            if (user && target) {
+                this.writeLocalLog('REVIEW_DELETE', user.username, user.display_name, target.restroom_id, '화장실 평가 삭제');
+            }
+            return true;
         }
     }
 

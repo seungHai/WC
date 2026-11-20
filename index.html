@@ -27,7 +27,7 @@
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7470571035558189" crossorigin="anonymous"></script>
 
     <!-- App Stylesheet -->
-    <link rel="stylesheet" href="./css/style.css?v=20261120c">
+    <link rel="stylesheet" href="./css/style.css?v=20261120d">
 </head>
 <body>
     <!-- ====================================================================
@@ -154,6 +154,7 @@
                 <div id="filter-chips" class="filter-chips">
                     <button type="button" class="chip active" data-filter="all">전체 보기</button>
                     <button type="button" class="chip" data-filter="nearest">📍 내 주변 가까운 순</button>
+                    <button type="button" class="chip" data-filter="top-rated">🌟 별점 높은 순</button>
                     <button type="button" class="chip" data-filter="separated">🚻 남녀분리</button>
                     <button type="button" class="chip" data-filter="floor1">1️⃣ 1층 화장실</button>
                     <button type="button" class="chip" data-filter="fav">⭐ 즐겨찾기</button>
@@ -603,6 +604,76 @@
         </div>
     </div>
 
+    <!-- ====================================================================
+         6. 화장실 평가 (별점 · 빠른 상태 태그 · 한줄평) 모달
+         ==================================================================== -->
+    <div id="review-modal" class="modal-backdrop">
+        <div class="modal-dialog" style="max-width:500px;">
+            <div class="modal-header">
+                <h3 id="review-modal-title">🌟 화장실 평가 및 한줄평</h3>
+                <button type="button" class="close-sheet-btn" data-close-modal="review-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- 평균 별점 요약 박스 -->
+                <div id="review-summary-header" class="review-summary-box"></div>
+
+                <!-- 내 평가 작성 / 수정 폼 -->
+                <form id="review-form" class="review-form-box">
+                    <div class="review-form-title">✍️ 나의 평가 남기기</div>
+                    <div class="star-picker-row">
+                        <div id="review-star-picker" class="star-picker" role="radiogroup" aria-label="별점 선택">
+                            <button type="button" class="star-btn active" data-star="1">★</button>
+                            <button type="button" class="star-btn active" data-star="2">★</button>
+                            <button type="button" class="star-btn active" data-star="3">★</button>
+                            <button type="button" class="star-btn active" data-star="4">★</button>
+                            <button type="button" class="star-btn active" data-star="5">★</button>
+                        </div>
+                        <span id="review-star-label" class="star-score-label">5점 (최고예요!)</span>
+                    </div>
+
+                    <div class="review-tag-section">
+                        <div class="review-sub-label">🏷️ 상태 태그 선택 (중복 가능)</div>
+                        <div id="review-tag-picker" class="review-tag-picker">
+                            <button type="button" class="review-tag-chip" data-tag="✨ 깨끗해요">✨ 깨끗해요</button>
+                            <button type="button" class="review-tag-chip" data-tag="🧻 휴지 넉넉함">🧻 휴지 넉넉함</button>
+                            <button type="button" class="review-tag-chip" data-tag="🚽 비데 있음">🚽 비데 있음</button>
+                            <button type="button" class="review-tag-chip" data-tag="🌿 향기/환기 좋음">🌿 향기/환기 좋음</button>
+                            <button type="button" class="review-tag-chip" data-tag="🤫 한적해요">🤫 한적해요</button>
+                            <button type="button" class="review-tag-chip warn" data-tag="⚠️ 비번 바뀜">⚠️ 비번 바뀜</button>
+                            <button type="button" class="review-tag-chip warn" data-tag="🧻 휴지 없음">🧻 휴지 없음</button>
+                            <button type="button" class="review-tag-chip warn" data-tag="🤢 냄새/위생 불량">🤢 냄새/위생 불량</button>
+                        </div>
+                    </div>
+
+                    <div class="form-field" style="margin-bottom:10px;">
+                        <input
+                            id="review-comment-input"
+                            type="text"
+                            maxlength="120"
+                            placeholder="한줄평을 남겨주세요 (예: 깔끔하고 비데도 잘 작동해요!)"
+                        >
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end;">
+                        <button type="submit" id="review-submit-btn" class="icon-btn primary" style="height:36px; padding:0 16px;">
+                            🌟 평가 등록하기
+                        </button>
+                    </div>
+                </form>
+
+                <!-- 회원 한줄평 목록 -->
+                <div class="review-list-title">
+                    <span>💬 회원 평가 목록</span>
+                    <span id="review-list-count">0건</span>
+                </div>
+                <div id="review-list-container" class="review-list-container"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="icon-btn" data-close-modal="review-modal">닫기</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 앱 설치(홈 화면에 추가) 안내 배너 -->
     <div id="install-banner" class="install-banner" role="dialog" aria-label="앱 설치 안내">
         <img src="./icons/icon-192.png" alt="" class="install-banner-icon">
@@ -618,8 +689,8 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- App Scripts -->
-    <script src="./js/config.js?v=20261120c"></script>
-    <script src="./js/db.js?v=20261120c"></script>
-    <script src="./js/app.js?v=20261120c"></script>
+    <script src="./js/config.js?v=20261120d"></script>
+    <script src="./js/db.js?v=20261120d"></script>
+    <script src="./js/app.js?v=20261120d"></script>
 </body>
 </html>

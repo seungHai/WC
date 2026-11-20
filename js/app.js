@@ -8,6 +8,10 @@
         map: null,
         restrooms: [],
         publicRestrooms: [],
+        reviewSummaries: {}, // restroom_id -> { avg_rating, review_count }
+        reviewTargetItem: null,
+        reviewSelectedStar: 5,
+        reviewSelectedTags: [],
         showPublicRestrooms: false, // 기본값: 숨김 (선택 시에만 표시)
         isLoadingPublicRestrooms: false,
         publicFetchTimer: null,
@@ -17,7 +21,7 @@
         pickMarkerOverlay: null,
         userLocation: null, // [lng, lat]
         selectedId: null,
-        activeFilter: 'all', // 'all' | 'nearest' | 'separated' | 'floor1' | 'fav'
+        activeFilter: 'all', // 'all' | 'nearest' | 'top-rated' | 'separated' | 'floor1' | 'fav'
         activeRegion: 'all',
         searchQuery: '',
         isPickingLocation: false,
@@ -567,14 +571,36 @@
 
     async function loadRestrooms() {
         try {
-            const list = await window.WCDB.getRestrooms();
+            const [list, summaries] = await Promise.all([
+                window.WCDB.getRestrooms(),
+                window.WCDB.getReviewSummaries().catch(() => ({}))
+            ]);
             state.restrooms = (list && list.length > 0)
                 ? list
                 : ((window.WC_CONFIG && window.WC_CONFIG.INITIAL_RESTROOMS) || []);
+            state.reviewSummaries = summaries || {};
             recalculateDistancesAndFilter();
         } catch (err) {
             state.restrooms = (window.WC_CONFIG && window.WC_CONFIG.INITIAL_RESTROOMS) || [];
+            state.reviewSummaries = await window.WCDB.getReviewSummaries().catch(() => ({}));
             recalculateDistancesAndFilter();
+        }
+    }
+
+    async function refreshReviewSummaries() {
+        try {
+            state.reviewSummaries = await window.WCDB.getReviewSummaries();
+            recalculateDistancesAndFilter();
+            if (state.selectedId) {
+                const currentItem = state.filteredRestrooms.find(r => r.id === state.selectedId)
+                    || state.restrooms.find(r => r.id === state.selectedId)
+                    || state.publicRestrooms.find(r => r.id === state.selectedId);
+                if (currentItem) {
+                    openDetailSheet(currentItem);
+                }
+            }
+        } catch (e) {
+            // 무시
         }
     }
 
@@ -662,16 +688,19 @@
             ? [...state.restrooms, ...state.publicRestrooms]
             : [...state.restrooms];
 
-        // 거리 계산 및 즐겨찾기 플래그 주입
+        // 거리 계산, 즐겨찾기 및 별점 요약(avg_rating, review_count) 플래그 주입
         const enriched = combinedSource.map(item => {
             let distance = null;
             if (refCoords) {
                 distance = getDistanceMeters(refCoords[0], refCoords[1], item.lng, item.lat);
             }
+            const revStat = state.reviewSummaries[String(item.id)] || { avg_rating: 0, review_count: 0 };
             return {
                 ...item,
                 distance,
-                isFav: favIds.includes(item.id)
+                isFav: favIds.includes(item.id),
+                avg_rating: Number(revStat.avg_rating) || 0,
+                review_count: Number(revStat.review_count) || 0
             };
         });
 
@@ -701,8 +730,15 @@
             filtered = filtered.filter(i => i.isFav);
         }
 
-        // 정렬: 내 위치가 있거나 'nearest' 필터면 거리순, 아니면 즐겨찾기 -> 프라이빗 화장실 우선 -> 이름순
-        if (refCoords || state.activeFilter === 'nearest') {
+        // 정렬: 'top-rated'(별점 높은 순) -> 'nearest'/내 위치(거리순) -> 기본(즐겨찾기 + 프라이빗 우선 + 이름순)
+        if (state.activeFilter === 'top-rated') {
+            filtered.sort((a, b) => {
+                if (b.avg_rating !== a.avg_rating) return b.avg_rating - a.avg_rating;
+                if (b.review_count !== a.review_count) return b.review_count - a.review_count;
+                if (refCoords) return (a.distance ?? 99999999) - (b.distance ?? 99999999);
+                return a.name.localeCompare(b.name, 'ko');
+            });
+        } else if (refCoords || state.activeFilter === 'nearest') {
             filtered.sort((a, b) => (a.distance ?? 99999999) - (b.distance ?? 99999999));
         } else {
             filtered.sort((a, b) => {
@@ -815,6 +851,9 @@
                         <div class="card-title">
                             ${item.is_public_data ? `<span class="public-wc-badge">🏛️ ${escapeHtml(item.category || '공중화장실')}</span>` : ''}
                             <span>${escapeHtml(item.name)}</span>
+                            ${item.review_count > 0
+                                ? `<button type="button" class="rating-pill has-rating" data-open-review-id="${escapeHtml(item.id)}" title="클릭하여 평가/한줄평 보기">🌟 ${item.avg_rating.toFixed(1)} (${item.review_count})</button>`
+                                : `<button type="button" class="rating-pill" data-open-review-id="${escapeHtml(item.id)}" title="첫 평가를 남겨보세요">☆ 평가하기</button>`}
                         </div>
                         <div class="card-subtitle">
                             ${escapeHtml(item.location_detail || '')} ${item.floor && !item.is_public_data ? `· ${escapeHtml(item.floor)}` : ''}
@@ -848,6 +887,17 @@
         // 카드 클릭 이벤트 바인딩
         listEl.querySelectorAll('.restroom-card').forEach(card => {
             card.addEventListener('click', (e) => {
+                // 별점/평가 배지 클릭 시 평가 모달 바로 열기
+                const revBtn = e.target.closest('[data-open-review-id]');
+                if (revBtn) {
+                    e.stopPropagation();
+                    const id = revBtn.getAttribute('data-open-review-id');
+                    const item = state.filteredRestrooms.find(r => r.id === id)
+                        || state.restrooms.find(r => r.id === id)
+                        || state.publicRestrooms.find(r => r.id === id);
+                    if (item) openReviewModal(item);
+                    return;
+                }
                 // 비밀번호 복사 배지 클릭 시
                 const pwBtn = e.target.closest('[data-copy-pw]');
                 if (pwBtn) {
@@ -1226,6 +1276,10 @@
         const kakaoUrl = `https://map.kakao.com/link/to/${encodeURIComponent(item.name)},${item.lat},${item.lng}`;
         const googleUrl = `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`;
 
+        const revStat = state.reviewSummaries[String(item.id)] || { avg_rating: 0, review_count: 0 };
+        const avgRating = Number(revStat.avg_rating) || 0;
+        const reviewCount = Number(revStat.review_count) || 0;
+
         sheet.style.display = 'block';
         document.getElementById('app-shell').classList.add('detail-open');
         sheet.innerHTML = `
@@ -1253,6 +1307,19 @@
                         ? `<span class="pw-chip public-open">🔓 개방시간: ${escapeHtml(item.open_hours || '상시 개방')}</span>`
                         : renderPwBadgesHtml(item)}
                 </div>
+            </div>
+
+            <!-- 별점 요약 & 평가/한줄평 열기 배너 -->
+            <div class="detail-review-strip" id="btn-open-review-sheet">
+                <div class="detail-review-left">
+                    <span class="detail-star-icon">🌟</span>
+                    ${reviewCount > 0
+                        ? `<strong>${avgRating.toFixed(1)}점</strong> <span class="detail-review-cnt">(${reviewCount}개 평가)</span>`
+                        : `<span>아직 등록된 평가가 없습니다</span>`}
+                </div>
+                <button type="button" class="detail-review-btn">
+                    ✍️ ${reviewCount > 0 ? '평가 · 한줄평 보기' : '첫 평가 남기기'}
+                </button>
             </div>
 
             <div class="card-meta-tags" style="margin-bottom:10px;">
@@ -1310,6 +1377,11 @@
         const editBtn = sheet.querySelector('#btn-edit-wc');
         if (editBtn) {
             editBtn.onclick = () => openRestroomModal(item);
+        }
+
+        const openRevStrip = sheet.querySelector('#btn-open-review-sheet');
+        if (openRevStrip) {
+            openRevStrip.onclick = () => openReviewModal(item);
         }
 
         const delBtn = sheet.querySelector('#btn-delete-wc');
@@ -1805,6 +1877,215 @@
     }
 
     // ========================================================================
+    // 화장실 평가 (별점 1~5 · 빠른 상태 태그 · 한줄평 코멘트) 모달 제어
+    // ========================================================================
+    const STAR_SCORE_LABELS = {
+        1: '1점 (별로예요 😞)',
+        2: '2점 (아쉬워요 😕)',
+        3: '3점 (보통이에요 🙂)',
+        4: '4점 (괜찮아요 😊)',
+        5: '5점 (최고예요! 🤩)'
+    };
+
+    function updateStarPickerUI(starValue) {
+        const star = Math.max(1, Math.min(5, Number(starValue) || 5));
+        state.reviewSelectedStar = star;
+        document.querySelectorAll('#review-star-picker .star-btn').forEach(btn => {
+            const val = Number(btn.getAttribute('data-star'));
+            btn.classList.toggle('active', val <= star);
+        });
+        const lbl = document.getElementById('review-star-label');
+        if (lbl) lbl.textContent = STAR_SCORE_LABELS[star] || `${star}점`;
+    }
+
+    function updateReviewTagsUI(tags = []) {
+        state.reviewSelectedTags = Array.isArray(tags) ? [...tags] : [];
+        document.querySelectorAll('#review-tag-picker .review-tag-chip').forEach(btn => {
+            const t = btn.getAttribute('data-tag');
+            btn.classList.toggle('active', state.reviewSelectedTags.includes(t));
+        });
+    }
+
+    function renderStarsString(score) {
+        const full = Math.round(Number(score) || 0);
+        return '★'.repeat(Math.max(0, Math.min(5, full))) + '☆'.repeat(Math.max(0, 5 - full));
+    }
+
+    async function openReviewModal(item) {
+        if (!item) return;
+        state.reviewTargetItem = item;
+
+        const titleEl = document.getElementById('review-modal-title');
+        if (titleEl) {
+            titleEl.textContent = `🌟 ${item.name} 평가 · 한줄평`;
+        }
+
+        // 폼 초기화 (기본 5점)
+        updateStarPickerUI(5);
+        updateReviewTagsUI([]);
+        const commentInput = document.getElementById('review-comment-input');
+        if (commentInput) commentInput.value = '';
+        const submitBtn = document.getElementById('review-submit-btn');
+        if (submitBtn) submitBtn.textContent = '🌟 평가 등록하기';
+
+        document.getElementById('review-modal').classList.add('open');
+        await loadAndRenderReviewsForCurrentItem();
+    }
+
+    async function loadAndRenderReviewsForCurrentItem() {
+        const item = state.reviewTargetItem;
+        if (!item) return;
+
+        const summaryBox = document.getElementById('review-summary-header');
+        const listContainer = document.getElementById('review-list-container');
+        const countEl = document.getElementById('review-list-count');
+        if (listContainer) {
+            listContainer.innerHTML = `<div style="text-align:center; padding:18px; color:var(--text-muted); font-size:13px;">평가를 불러오는 중...</div>`;
+        }
+
+        const reviews = await window.WCDB.getRestroomReviews(item.id);
+        const currentUser = window.WCDB.currentUser;
+
+        // 평균 점수 및 태그 빈도 집계
+        const count = reviews.length;
+        const avg = count > 0
+            ? Number((reviews.reduce((acc, r) => acc + (Number(r.rating) || 0), 0) / count).toFixed(1))
+            : 0;
+
+        // 캐시 요약 정보도 최신화
+        if (count > 0) {
+            state.reviewSummaries[String(item.id)] = { avg_rating: avg, review_count: count };
+        } else {
+            delete state.reviewSummaries[String(item.id)];
+        }
+
+        const tagCounts = {};
+        reviews.forEach(r => {
+            (r.tags || []).forEach(t => {
+                tagCounts[t] = (tagCounts[t] || 0) + 1;
+            });
+        });
+        const topTags = Object.entries(tagCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5);
+
+        if (summaryBox) {
+            summaryBox.innerHTML = `
+                <div class="review-summary-main">
+                    <div class="review-summary-score">${count > 0 ? avg.toFixed(1) : '-'}</div>
+                    <div class="review-summary-meta">
+                        <div class="review-summary-stars">${count > 0 ? renderStarsString(avg) : '☆☆☆☆☆'}</div>
+                        <div class="review-summary-sub">${count > 0 ? `총 ${count}명의 회원이 평가함` : '첫 번째 평가를 남겨주세요!'}</div>
+                    </div>
+                </div>
+                ${topTags.length > 0 ? `
+                    <div class="review-summary-tags">
+                        ${topTags.map(([tag, cnt]) => `<span class="meta-tag">${escapeHtml(tag)} <b>${cnt}</b></span>`).join('')}
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        if (countEl) {
+            countEl.textContent = `${count}건`;
+        }
+
+        // 이미 내가 작성한 평가가 있으면 폼에 자동 채워넣어 수정 가능하게 지원
+        if (currentUser) {
+            const myReview = reviews.find(r => r.username === currentUser.username);
+            if (myReview) {
+                updateStarPickerUI(myReview.rating);
+                updateReviewTagsUI(myReview.tags || []);
+                const commentInput = document.getElementById('review-comment-input');
+                if (commentInput) commentInput.value = myReview.comment || '';
+                const submitBtn = document.getElementById('review-submit-btn');
+                if (submitBtn) submitBtn.textContent = '✏️ 내 평가 수정하기';
+            }
+        }
+
+        if (!listContainer) return;
+
+        if (count === 0) {
+            listContainer.innerHTML = `
+                <div class="review-empty-state">
+                    아직 등록된 한줄평이 없습니다.<br>위에서 별점과 상태 태그를 선택해 첫 평가를 등록해보세요!
+                </div>
+            `;
+            return;
+        }
+
+        listContainer.innerHTML = reviews.map(r => {
+            const canDelete = currentUser && (currentUser.role === 'admin' || currentUser.username === r.username);
+            const tagsHtml = Array.isArray(r.tags) && r.tags.length > 0
+                ? `<div class="review-item-tags">${r.tags.map(t => `<span class="meta-tag">${escapeHtml(t)}</span>`).join('')}</div>`
+                : '';
+            return `
+                <div class="review-item-card">
+                    <div class="review-item-top">
+                        <div class="review-item-author">
+                            <span class="review-item-stars">${renderStarsString(r.rating)}</span>
+                            <strong>${escapeHtml(r.display_name || r.username)}</strong>
+                            <span class="review-item-date">${escapeHtml(formatKoreanDateTime(r.updated_at || r.created_at).slice(0, 16))}</span>
+                        </div>
+                        ${canDelete ? `<button type="button" class="text-link-btn" style="color:var(--danger); font-size:11.5px;" data-del-review-id="${escapeHtml(r.id)}">삭제</button>` : ''}
+                    </div>
+                    ${tagsHtml}
+                    ${r.comment ? `<div class="review-item-comment">${escapeHtml(r.comment)}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        listContainer.querySelectorAll('[data-del-review-id]').forEach(btn => {
+            btn.onclick = async () => {
+                const revId = btn.getAttribute('data-del-review-id');
+                if (!confirm('이 평가를 삭제하시겠습니까?')) return;
+                try {
+                    await window.WCDB.deleteRestroomReview(revId);
+                    showToast('평가가 삭제되었습니다.');
+                    await loadAndRenderReviewsForCurrentItem();
+                    await refreshReviewSummaries();
+                } catch (err) {
+                    showToast('삭제 실패: ' + err.message);
+                }
+            };
+        });
+    }
+
+    async function handleSaveReviewForm(e) {
+        e.preventDefault();
+        const item = state.reviewTargetItem;
+        if (!item) return;
+
+        const commentInput = document.getElementById('review-comment-input');
+        const comment = (commentInput ? commentInput.value : '').trim();
+
+        if (state.reviewSelectedTags.length === 0 && !comment) {
+            showToast('상태 태그를 1개 이상 선택하거나 한줄평을 입력해주세요!');
+            return;
+        }
+
+        const submitBtn = document.getElementById('review-submit-btn');
+        if (submitBtn) submitBtn.disabled = true;
+
+        try {
+            await window.WCDB.saveRestroomReview({
+                restroom_id: item.id,
+                restroom_name: item.name,
+                rating: state.reviewSelectedStar,
+                tags: state.reviewSelectedTags,
+                comment
+            });
+            showToast('🌟 화장실 평가가 등록되었습니다!');
+            await loadAndRenderReviewsForCurrentItem();
+            await refreshReviewSummaries();
+        } catch (err) {
+            showToast('평가 저장 실패: ' + err.message);
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+        }
+    }
+
+    // ========================================================================
     // 관리자 센터 모달 (사용자 계정 부여/관리 + 화장실 관리 + 클라우드 DB 설정)
     // ========================================================================
     async function openAdminModal(defaultTab = 'users') {
@@ -2033,6 +2314,8 @@
             RESTROOM_CREATE: { cls: 'create', text: '➕ 화장실 등록' },
             RESTROOM_UPDATE: { cls: 'update', text: '✏️ 화장실 수정' },
             RESTROOM_DELETE: { cls: 'delete', text: '🗑️ 화장실 삭제' },
+            REVIEW_UPSERT: { cls: 'create', text: '🌟 화장실 평가' },
+            REVIEW_DELETE: { cls: 'delete', text: '🗑️ 평가 삭제' },
             USER_CREATE: { cls: 'create', text: '👤 계정 발급' },
             USER_UPDATE: { cls: 'update', text: '⚙️ 계정 변경' },
             USER_DELETE: { cls: 'delete', text: '🗑️ 계정 삭제' }
@@ -2449,6 +2732,26 @@
             );
         });
         bindById('wc-form', 'submit', handleSaveRestroomForm);
+
+        // 5-1. 화장실 평가(별점 · 상태 태그 · 한줄평) 모달 내부 이벤트
+        document.querySelectorAll('#review-star-picker .star-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                updateStarPickerUI(Number(btn.getAttribute('data-star')));
+            });
+        });
+        document.querySelectorAll('#review-tag-picker .review-tag-chip').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tag = btn.getAttribute('data-tag');
+                const idx = state.reviewSelectedTags.indexOf(tag);
+                if (idx === -1) {
+                    state.reviewSelectedTags.push(tag);
+                } else {
+                    state.reviewSelectedTags.splice(idx, 1);
+                }
+                updateReviewTagsUI(state.reviewSelectedTags);
+            });
+        });
+        bindById('review-form', 'submit', handleSaveReviewForm);
 
         // 6. 관리자 센터 이벤트
         bindById('btn-open-admin', 'click', () => openAdminModal('users'));
