@@ -1314,6 +1314,37 @@
             }
             return true;
         }
+
+        // ====================================================================
+        // 6. 사용자 상세 행동 로그 기록 (비동기 fire-and-forget, UI 지연 없음)
+        // ====================================================================
+        async logActivity(actionType, targetName = '', detail = '') {
+            const token = this.getToken();
+            if (!token || !actionType) return false;
+
+            const user = this.currentUser;
+            const deviceInfo = (cachedTelemetry && cachedTelemetry.formatted) || getDeviceSummary();
+
+            // 로컬 로그에도 기록 (로컬 모드 및 폴백 확인용)
+            if (user) {
+                this.writeLocalLog(actionType, user.username, user.display_name, targetName, detail, deviceInfo);
+            }
+
+            if (this.isCloudMode()) {
+                try {
+                    await this.supabase.rpc('rpc_log_activity', {
+                        p_token: token,
+                        p_action_type: actionType,
+                        p_target_name: String(targetName || '').slice(0, 120),
+                        p_detail: String(detail || '').slice(0, 300),
+                        p_device_info: deviceInfo
+                    });
+                } catch (e) {
+                    // RPC 미설치 시에도 사용자 경험에 영향을 주지 않도록 무시
+                }
+            }
+            return true;
+        }
     }
 
     window.WCDB = new WCDatabaseService();

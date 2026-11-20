@@ -801,6 +801,55 @@ BEGIN
 END;
 $$;
 
+-- ============================================================================
+-- [활동 로그 RPC] 사용자 상세 행동(조회·비번복사·길찾기·검색·필터 등) 기록
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.rpc_log_activity(
+    p_token TEXT,
+    p_action_type TEXT,
+    p_target_name TEXT DEFAULT '',
+    p_detail TEXT DEFAULT '',
+    p_device_info TEXT DEFAULT ''
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+    v_user public.app_users;
+    v_action TEXT;
+BEGIN
+    v_user := public.internal_validate_token(p_token);
+    v_action := upper(trim(COALESCE(p_action_type, '')));
+
+    IF v_action NOT IN (
+        'VIEW_RESTROOM',
+        'COPY_PASSWORD',
+        'NAV_CLICK',
+        'SEARCH',
+        'REGION_CHANGE',
+        'FILTER_CHANGE',
+        'PUBLIC_TOGGLE',
+        'URGENT_NEAREST',
+        'SHARE_RESTROOM'
+    ) THEN
+        RETURN false;
+    END IF;
+
+    PERFORM public.internal_write_log(
+        v_action,
+        v_user.username,
+        v_user.display_name,
+        left(trim(COALESCE(p_target_name, '')), 120),
+        left(trim(COALESCE(p_detail, '')), 300),
+        left(trim(COALESCE(p_device_info, '')), 300)
+    );
+
+    RETURN true;
+END;
+$$;
+
 -- RPC 실행 권한 부여
 GRANT EXECUTE ON FUNCTION public.rpc_login(TEXT, TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rpc_verify_session(TEXT) TO anon, authenticated;
@@ -817,6 +866,7 @@ GRANT EXECUTE ON FUNCTION public.rpc_get_review_summaries(TEXT) TO anon, authent
 GRANT EXECUTE ON FUNCTION public.rpc_get_restroom_reviews(TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rpc_upsert_restroom_review(TEXT, TEXT, TEXT, INT, TEXT[], TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rpc_delete_restroom_review(TEXT, UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rpc_log_activity(TEXT, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated;
 
 -- ============================================================================
 -- 초기 데이터 시딩 (기본 관리자 계정 + 기존 대똥여지도 16개 화장실 데이터)

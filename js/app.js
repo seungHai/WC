@@ -15,6 +15,8 @@
         showPublicRestrooms: false, // 기본값: 숨김 (선택 시에만 표시)
         isLoadingPublicRestrooms: false,
         publicFetchTimer: null,
+        searchLogTimer: null,
+        lastLoggedSearch: '',
         filteredRestrooms: [],
         markerOverlays: [],
         userMarkerOverlay: null,
@@ -42,6 +44,12 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    function trackActivity(actionType, targetName = '', detail = '') {
+        if (window.WCDB && typeof window.WCDB.logActivity === 'function') {
+            window.WCDB.logActivity(actionType, targetName, detail).catch(() => {});
+        }
     }
 
     function showToast(message) {
@@ -556,6 +564,7 @@
                 if (!region) return;
 
                 state.activeRegion = regionId;
+                trackActivity('REGION_CHANGE', region.label, `지역 탭 선택: ${region.label}`);
                 recalculateDistancesAndFilter();
 
                 // 해당 지역에 마커가 있으면 첫 번째(또는 중심) 마커로 이동, 없으면 지역 기본 좌표로 이동
@@ -630,6 +639,7 @@
     async function togglePublicRestroomsVisibility() {
         state.showPublicRestrooms = !state.showPublicRestrooms;
         updatePublicToggleUI();
+        trackActivity('PUBLIC_TOGGLE', state.showPublicRestrooms ? '공중화장실 ON' : '공중화장실 OFF', state.showPublicRestrooms ? '전국 공중화장실 표시 켜기' : '전국 공중화장실 표시 끄기');
 
         if (!state.showPublicRestrooms) {
             // 비표시(Non-visible) 전환 시 선택된 항목이 공중화장실이면 상세시트 닫기
@@ -903,7 +913,10 @@
                 if (pwBtn) {
                     e.stopPropagation();
                     const pw = pwBtn.getAttribute('data-copy-pw');
+                    const cardId = card.getAttribute('data-id');
+                    const targetItem = state.filteredRestrooms.find(r => r.id === cardId);
                     copyText(pw, `비밀번호 [${pw}] 복사 완료!`);
+                    trackActivity('COPY_PASSWORD', targetItem ? targetItem.name : cardId, `목록 카드에서 비밀번호 복사 (${pw})`);
                     return;
                 }
                 // 즐겨찾기 버튼 클릭 시
@@ -1235,6 +1248,11 @@
         renderRestroomList();
         renderMapMarkers();
         openDetailSheet(item);
+        trackActivity(
+            'VIEW_RESTROOM',
+            item.name,
+            `${item.is_public_data ? '공중화장실' : '프라이빗'} 상세 조회 (${item.region || item.location_detail || '-'})`
+        );
 
         // 리스트 내 스크롤 이동 (모바일 접힘 상태에서는 side-panel 전체가 스크롤되어 상단 핸들/로고가 잘리는 현상 방지)
         if (!isMobileLayout() || state.sheetState !== 'collapsed') {
@@ -1336,9 +1354,9 @@
             </div>
 
             <div class="detail-actions">
-                <a class="nav-btn" href="${kakaoUrl}" target="_blank" rel="noopener">🟡 카카오맵 길찾기</a>
-                <a class="nav-btn" href="${naverUrl}" target="_blank" rel="noopener">🟢 네이버 길찾기</a>
-                <a class="nav-btn" href="${googleUrl}" target="_blank" rel="noopener">🔵 구글맵 길찾기</a>
+                <a class="nav-btn" data-nav-provider="카카오맵" href="${kakaoUrl}" target="_blank" rel="noopener">🟡 카카오맵 길찾기</a>
+                <a class="nav-btn" data-nav-provider="네이버지도" href="${naverUrl}" target="_blank" rel="noopener">🟢 네이버 길찾기</a>
+                <a class="nav-btn" data-nav-provider="구글맵" href="${googleUrl}" target="_blank" rel="noopener">🔵 구글맵 길찾기</a>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:nowrap; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid var(--border-color);">
@@ -1361,6 +1379,14 @@
             btn.onclick = () => {
                 const pw = btn.getAttribute('data-copy-pw');
                 copyText(pw, `비밀번호 [${pw}] 복사 완료!`);
+                trackActivity('COPY_PASSWORD', item.name, `상세 시트에서 비밀번호 복사 (${pw})`);
+            };
+        });
+
+        sheet.querySelectorAll('[data-nav-provider]').forEach(link => {
+            link.onclick = () => {
+                const provider = link.getAttribute('data-nav-provider');
+                trackActivity('NAV_CLICK', item.name, `${provider} 길찾기 실행 (${item.region || item.location_detail || '-'})`);
             };
         });
 
@@ -1372,6 +1398,7 @@
                     : `비밀번호: ${item.pw_common || '없음'}`);
             const shareMsg = `[대똥여지도 화장실 공유]\n📍 장소: ${item.name} (${item.location_detail})\n🔑 ${pwText}\n🗺️ 길찾기: ${kakaoUrl}`;
             copyText(shareMsg, '화장실 정보와 길찾기 링크가 복사되었습니다!');
+            trackActivity('SHARE_RESTROOM', item.name, '화장실 위치/비밀번호 공유 텍스트 복사');
         };
 
         const editBtn = sheet.querySelector('#btn-edit-wc');
@@ -1425,6 +1452,7 @@
                     const nearest = state.filteredRestrooms[0];
                     selectRestroom(nearest.id, true);
                     showToast(`🚨 가장 가까운 [${nearest.name}] (${formatDistance(nearest.distance)}) 발견!`);
+                    trackActivity('URGENT_NEAREST', nearest.name, `급똥 가까운 변소 찾기 실행 (${formatDistance(nearest.distance)})`);
                 }
             },
             function () {
@@ -2318,7 +2346,16 @@
             REVIEW_DELETE: { cls: 'delete', text: '🗑️ 평가 삭제' },
             USER_CREATE: { cls: 'create', text: '👤 계정 발급' },
             USER_UPDATE: { cls: 'update', text: '⚙️ 계정 변경' },
-            USER_DELETE: { cls: 'delete', text: '🗑️ 계정 삭제' }
+            USER_DELETE: { cls: 'delete', text: '🗑️ 계정 삭제' },
+            VIEW_RESTROOM: { cls: 'login', text: '👀 화장실 조회' },
+            COPY_PASSWORD: { cls: 'create', text: '📋 비번 복사' },
+            NAV_CLICK: { cls: 'create', text: '🗺️ 길찾기 클릭' },
+            SEARCH: { cls: 'update', text: '🔍 검색어 입력' },
+            REGION_CHANGE: { cls: 'login', text: '📍 지역 이동' },
+            FILTER_CHANGE: { cls: 'login', text: '🏷️ 필터 선택' },
+            PUBLIC_TOGGLE: { cls: 'update', text: '🏛️ 공중 토글' },
+            URGENT_NEAREST: { cls: 'delete', text: '🚨 급똥 찾기' },
+            SHARE_RESTROOM: { cls: 'update', text: '📤 정보 공유' }
         };
         const item = map[actionType] || { cls: 'login', text: actionType };
         return `<span class="log-badge ${item.cls}">${escapeHtml(item.text)}</span>`;
@@ -2336,10 +2373,17 @@
             const searchEl = document.getElementById('admin-log-search');
             const searchVal = (searchEl ? searchEl.value : '').trim().toLowerCase();
 
+            const BEHAVIOR_TYPES = new Set([
+                'VIEW_RESTROOM', 'COPY_PASSWORD', 'NAV_CLICK', 'SEARCH',
+                'REGION_CHANGE', 'FILTER_CHANGE', 'PUBLIC_TOGGLE', 'URGENT_NEAREST', 'SHARE_RESTROOM'
+            ]);
+
             const filtered = logs.filter(log => {
                 if (filterVal !== 'all') {
                     const action = log.action_type || '';
-                    if (filterVal === 'LOGIN') {
+                    if (filterVal === 'BEHAVIOR') {
+                        if (!BEHAVIOR_TYPES.has(action)) return false;
+                    } else if (filterVal === 'LOGIN') {
                         if (!action.startsWith('LOGIN') && action !== 'LOGOUT' && action !== 'PASSWORD_CHANGE') return false;
                     } else if (!action.startsWith(filterVal)) {
                         return false;
@@ -2665,6 +2709,15 @@
             if (state.showPublicRestrooms) {
                 scheduleFetchPublicRestrooms();
             }
+            // 검색어 로그 기록 (입력 완료 후 1.5초 디바운스)
+            if (state.searchLogTimer) clearTimeout(state.searchLogTimer);
+            const cleanQ = state.searchQuery.trim();
+            if (cleanQ.length >= 2 && cleanQ !== state.lastLoggedSearch) {
+                state.searchLogTimer = setTimeout(() => {
+                    state.lastLoggedSearch = cleanQ;
+                    trackActivity('SEARCH', cleanQ, `검색어 입력 (결과 ${state.filteredRestrooms.length}건)`);
+                }, 1500);
+            }
         });
         clearSearchBtn.addEventListener('click', () => {
             searchInput.value = '';
@@ -2679,6 +2732,7 @@
         document.querySelectorAll('#filter-chips .chip[data-filter]').forEach(chip => {
             chip.addEventListener('click', () => {
                 const filter = chip.getAttribute('data-filter');
+                const label = (chip.textContent || filter).trim();
                 if (filter === 'nearest' && !state.userLocation) {
                     findNearestRestroom();
                     return;
@@ -2686,6 +2740,7 @@
                 state.activeFilter = filter;
                 updateFilterChipsUI();
                 recalculateDistancesAndFilter();
+                trackActivity('FILTER_CHANGE', label, `필터 전환: ${label}`);
             });
         });
 
