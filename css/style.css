@@ -536,6 +536,57 @@ button, input, select, textarea {
     border-color: var(--accent);
 }
 
+/* 공중화장실 표시/숨김(visible / non-visible) 선택 토글 칩 & 지도 상단 버튼 */
+.public-toggle-chip {
+    border-style: dashed;
+    border-color: #10b981;
+    color: #059669;
+    background: rgba(16, 185, 129, 0.08);
+}
+
+[data-theme="dark"] .public-toggle-chip {
+    color: #34d399;
+    background: rgba(16, 185, 129, 0.14);
+}
+
+.public-toggle-chip.active-public,
+.public-map-toggle-btn.active-public {
+    border-style: solid;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: #ffffff !important;
+    border-color: #059669 !important;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
+}
+
+.public-wc-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+    white-space: nowrap;
+}
+
+[data-theme="dark"] .public-wc-badge {
+    background: rgba(16, 185, 129, 0.22);
+    color: #34d399;
+}
+
+.pw-chip.public-open {
+    background: rgba(16, 185, 129, 0.14);
+    color: #059669;
+    border-color: rgba(16, 185, 129, 0.3);
+    cursor: default;
+}
+
+[data-theme="dark"] .pw-chip.public-open {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+}
+
 /* 가장 가까운 화장실 배너 (급똥 응급 카드) */
 .nearest-banner {
     margin: 10px 14px 4px;
@@ -1226,6 +1277,10 @@ body.picking .custom-zoom-controls {
     background: #2563eb;
 }
 
+.wc-map-pin.public-pin .wc-pin-dot {
+    background: #059669;
+}
+
 .wc-map-pin.active .wc-pin-dot,
 .wc-map-pin:hover .wc-pin-dot {
     background: #dc2626;
@@ -1246,6 +1301,10 @@ body.picking .custom-zoom-controls {
 
 .wc-map-pin.separated .wc-pin-stem {
     background: rgba(37, 99, 235, 0.65);
+}
+
+.wc-map-pin.public-pin .wc-pin-stem {
+    background: rgba(5, 150, 105, 0.65);
 }
 
 .wc-map-pin.active .wc-pin-stem,
@@ -1278,6 +1337,10 @@ body.picking .custom-zoom-controls {
 
 .wc-map-pin.separated .wc-pin-bubble {
     background: #2563eb;
+}
+
+.wc-map-pin.public-pin .wc-pin-bubble {
+    background: #059669;
 }
 
 .wc-map-pin.no-paper .wc-pin-bubble {
@@ -1803,6 +1866,7 @@ body.picking .custom-zoom-controls {
     .mobile-sheet-handle {
         display: flex;
         justify-content: center;
+        flex-shrink: 0;
         padding: 12px 0 10px; /* 손가락으로 누르기 쉽게 터치 영역 확대 */
         cursor: grab;
         touch-action: none;
@@ -1816,11 +1880,26 @@ body.picking .custom-zoom-controls {
         opacity: 0.55;
     }
 
+    /* 접힌 상태(collapsed)에서는 상단 헤더(로고/검색창)만 깔끔하게 노출하고 아래 배너·목록은 숨김 */
+    .side-panel.collapsed .nearest-banner,
+    .side-panel.collapsed .restroom-list-header,
+    .side-panel.collapsed .restroom-list,
+    .side-panel.collapsed .user-status-strip,
+    .side-panel.collapsed .filter-chips {
+        display: none !important;
+    }
+
     /* 접힌 상태에서도 검색창이 보이도록 헤더 순서 재배치 */
     .panel-header {
         display: flex;
         flex-direction: column;
+        flex-shrink: 0;
         padding: 0 14px 10px;
+    }
+
+    .side-panel.collapsed .panel-header {
+        border-bottom: none;
+        padding-bottom: 6px;
     }
 
     .brand-row {
@@ -1862,6 +1941,7 @@ body.picking .custom-zoom-controls {
     }
 
     .nearest-banner {
+        flex-shrink: 0;
         margin: 8px 12px 2px;
         padding: 10px 12px;
     }
@@ -1871,10 +1951,13 @@ body.picking .custom-zoom-controls {
     }
 
     .restroom-list-header {
+        flex-shrink: 0;
         padding: 8px 14px 4px;
     }
 
     .restroom-list {
+        flex: 1 1 auto;
+        min-height: 0;
         padding: 6px 12px calc(24px + env(safe-area-inset-bottom, 0px));
         overscroll-behavior: contain;
     }

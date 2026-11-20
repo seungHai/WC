@@ -7,6 +7,10 @@
         kakaoMap: null,
         map: null,
         restrooms: [],
+        publicRestrooms: [],
+        showPublicRestrooms: false, // 기본값: 숨김 (선택 시에만 표시)
+        isLoadingPublicRestrooms: false,
+        publicFetchTimer: null,
         filteredRestrooms: [],
         markerOverlays: [],
         userMarkerOverlay: null,
@@ -207,6 +211,43 @@
         return (window.WC_CONFIG && window.WC_CONFIG.DEFAULT_CENTER) || [126.742887, 37.5205];
     }
 
+    function getMapBoundsBox() {
+        if (state.engine === 'kakao' && state.kakaoMap) {
+            const b = state.kakaoMap.getBounds();
+            if (b) {
+                const sw = b.getSouthWest();
+                const ne = b.getNorthEast();
+                return {
+                    minLat: sw.getLat() - 0.015,
+                    maxLat: ne.getLat() + 0.015,
+                    minLng: sw.getLng() - 0.018,
+                    maxLng: ne.getLng() + 0.018
+                };
+            }
+        }
+        if (state.map) {
+            const size = state.map.getSize();
+            if (size) {
+                const extent = state.map.getView().calculateExtent(size);
+                const sw = ol.proj.toLonLat([extent[0], extent[1]]);
+                const ne = ol.proj.toLonLat([extent[2], extent[3]]);
+                return {
+                    minLat: Math.min(sw[1], ne[1]) - 0.015,
+                    maxLat: Math.max(sw[1], ne[1]) + 0.015,
+                    minLng: Math.min(sw[0], ne[0]) - 0.018,
+                    maxLng: Math.max(sw[0], ne[0]) + 0.018
+                };
+            }
+        }
+        const c = getMapCenterLonLat();
+        return {
+            minLat: c[1] - 0.05,
+            maxLat: c[1] + 0.05,
+            minLng: c[0] - 0.06,
+            maxLng: c[0] + 0.06
+        };
+    }
+
     function getMapZoom() {
         if (state.engine === 'kakao' && state.kakaoMap) {
             return 20 - state.kakaoMap.getLevel();
@@ -338,6 +379,9 @@
 
                     kakao.maps.event.addListener(state.kakaoMap, 'idle', function () {
                         renderMapMarkers();
+                        if (state.showPublicRestrooms) {
+                            scheduleFetchPublicRestrooms();
+                        }
                     });
 
                     renderRegionBar();
@@ -389,6 +433,9 @@
 
         state.map.on('moveend', function () {
             renderMapMarkers();
+            if (state.showPublicRestrooms) {
+                scheduleFetchPublicRestrooms();
+            }
         });
 
         renderRegionBar();
@@ -474,12 +521,92 @@
         }
     }
 
+    // ========================================================================
+    // 전국 공중화장실 데이터 표시/숨김(visible / non-visible) 선택 제어
+    // ========================================================================
+    function updatePublicToggleUI() {
+        const chipBtn = document.getElementById('btn-toggle-public-wc');
+        const mapBtn = document.getElementById('btn-map-toggle-public');
+        const isOn = state.showPublicRestrooms;
+        const countStr = isOn && state.publicRestrooms.length > 0 ? ` (${state.publicRestrooms.length})` : '';
+
+        if (chipBtn) {
+            chipBtn.classList.toggle('active-public', isOn);
+            chipBtn.innerHTML = isOn
+                ? `🏛️ 공중화장실 표시중${countStr}`
+                : `🏛️ 공중화장실 숨김 (클릭 시 표시)`;
+        }
+        if (mapBtn) {
+            mapBtn.classList.toggle('active-public', isOn);
+            mapBtn.innerHTML = isOn
+                ? `🏛️<span class="lbl-long"> 공중화장실 ON${countStr}</span><span class="lbl-short"> 공중 ON</span>`
+                : `🏛️<span class="lbl-long"> 공중화장실 OFF</span><span class="lbl-short"> 공중 OFF</span>`;
+        }
+    }
+
+    async function togglePublicRestroomsVisibility() {
+        state.showPublicRestrooms = !state.showPublicRestrooms;
+        updatePublicToggleUI();
+
+        if (!state.showPublicRestrooms) {
+            // 비표시(Non-visible) 전환 시 선택된 항목이 공중화장실이면 상세시트 닫기
+            if (state.selectedId && String(state.selectedId).startsWith('pub-')) {
+                closeDetailSheet();
+                state.selectedId = null;
+            }
+            recalculateDistancesAndFilter();
+            showToast('🏛️ 공중화장실 마커를 숨겼습니다. (프라이빗 화장실만 표시)');
+            return;
+        }
+
+        showToast('🏛️ 현재 보고 있는 지도 영역의 공중화장실을 불러옵니다...');
+        await fetchPublicRestroomsForCurrentView();
+    }
+
+    function scheduleFetchPublicRestrooms() {
+        if (!state.showPublicRestrooms) return;
+        if (state.publicFetchTimer) clearTimeout(state.publicFetchTimer);
+        state.publicFetchTimer = setTimeout(() => {
+            fetchPublicRestroomsForCurrentView();
+        }, 280);
+    }
+
+    async function fetchPublicRestroomsForCurrentView() {
+        if (!state.showPublicRestrooms || state.isLoadingPublicRestrooms) return;
+        state.isLoadingPublicRestrooms = true;
+        try {
+            const q = state.searchQuery.trim();
+            const bounds = getMapBoundsBox();
+            // 검색어가 입력된 경우 전국 범위에서 검색, 아니면 현재 지도 화면 영역(Bounding Box) 내 조회
+            const list = await window.WCDB.getPublicRestrooms({
+                keyword: q,
+                limit: q ? 300 : 220,
+                minLat: q ? null : bounds.minLat,
+                maxLat: q ? null : bounds.maxLat,
+                minLng: q ? null : bounds.minLng,
+                maxLng: q ? null : bounds.maxLng
+            });
+            state.publicRestrooms = list || [];
+            updatePublicToggleUI();
+            recalculateDistancesAndFilter();
+        } catch (err) {
+            console.warn('공중화장실 조회 실패:', err);
+        } finally {
+            state.isLoadingPublicRestrooms = false;
+        }
+    }
+
     function recalculateDistancesAndFilter() {
         const favIds = window.WCDB.getFavorites();
         const refCoords = state.userLocation;
 
+        // 공중화장실 표시(showPublicRestrooms)가 켜져 있을 때만 병합, 꺼져 있으면(non-visible) 프라이빗 화장실만 사용
+        const combinedSource = state.showPublicRestrooms
+            ? [...state.restrooms, ...state.publicRestrooms]
+            : [...state.restrooms];
+
         // 거리 계산 및 즐겨찾기 플래그 주입
-        const enriched = state.restrooms.map(item => {
+        const enriched = combinedSource.map(item => {
             let distance = null;
             if (refCoords) {
                 distance = getDistanceMeters(refCoords[0], refCoords[1], item.lng, item.lat);
@@ -512,17 +639,20 @@
         if (state.activeFilter === 'separated') {
             filtered = filtered.filter(i => i.gender_separated);
         } else if (state.activeFilter === 'floor1') {
-            filtered = filtered.filter(i => (i.floor || '').includes('1층'));
+            filtered = filtered.filter(i => (i.floor || '').includes('1층') || i.is_public_data);
         } else if (state.activeFilter === 'fav') {
             filtered = filtered.filter(i => i.isFav);
         }
 
-        // 정렬: 내 위치가 있거나 'nearest' 필터면 거리순, 아니면 즐겨찾기 우선 + 이름순
+        // 정렬: 내 위치가 있거나 'nearest' 필터면 거리순, 아니면 즐겨찾기 -> 프라이빗 화장실 우선 -> 이름순
         if (refCoords || state.activeFilter === 'nearest') {
             filtered.sort((a, b) => (a.distance ?? 99999999) - (b.distance ?? 99999999));
         } else {
             filtered.sort((a, b) => {
                 if (a.isFav !== b.isFav) return a.isFav ? -1 : 1;
+                if (Boolean(a.is_public_data) !== Boolean(b.is_public_data)) {
+                    return a.is_public_data ? 1 : -1;
+                }
                 return a.name.localeCompare(b.name, 'ko');
             });
         }
@@ -622,14 +752,15 @@
         }
 
         listEl.innerHTML = state.filteredRestrooms.map(item => `
-            <div class="restroom-card ${state.selectedId === item.id ? 'selected' : ''}" data-id="${escapeHtml(item.id)}">
+            <div class="restroom-card ${item.is_public_data ? 'public-restroom-card' : ''} ${state.selectedId === item.id ? 'selected' : ''}" data-id="${escapeHtml(item.id)}">
                 <div class="card-top-row">
                     <div class="card-title-group">
                         <div class="card-title">
+                            ${item.is_public_data ? `<span class="public-wc-badge">🏛️ ${escapeHtml(item.category || '공중화장실')}</span>` : ''}
                             <span>${escapeHtml(item.name)}</span>
                         </div>
                         <div class="card-subtitle">
-                            ${escapeHtml(item.location_detail || '')} ${item.floor ? `· ${escapeHtml(item.floor)}` : ''}
+                            ${escapeHtml(item.location_detail || '')} ${item.floor && !item.is_public_data ? `· ${escapeHtml(item.floor)}` : ''}
                         </div>
                     </div>
                     <div style="display:flex; align-items:center; gap:6px;">
@@ -640,13 +771,19 @@
                     </div>
                 </div>
                 <div class="pw-badge-row">
-                    ${renderPwBadgesHtml(item)}
+                    ${item.is_public_data
+                        ? `<span class="pw-chip public-open">🔓 공공 개방 (${escapeHtml(item.open_hours || '상시')})</span>`
+                        : renderPwBadgesHtml(item)}
                 </div>
                 <div class="card-meta-tags">
                     <span class="meta-tag">${item.gender_separated ? '🚻 남녀분리' : '🚪 남녀공용'}</span>
-                    <span class="meta-tag ${item.has_paper ? '' : 'warn'}">${item.has_paper ? '🧻 휴지 구비' : '⚠️ 휴지 개인지참!'}</span>
+                    ${item.is_public_data
+                        ? `<span class="meta-tag">🚽 남 ${item.male_toilet_count || 0}·여 ${item.female_toilet_count || 0}</span>`
+                        : `<span class="meta-tag ${item.has_paper ? '' : 'warn'}">${item.has_paper ? '🧻 휴지 구비' : '⚠️ 휴지 개인지참!'}</span>`}
+                    ${item.diaper_table_yn ? `<span class="meta-tag">👶 기저귀교환대</span>` : ''}
+                    ${item.emergency_bell_yn ? `<span class="meta-tag">🔔 비상벨</span>` : ''}
                     ${item.region ? `<span class="meta-tag">📍 ${escapeHtml(item.region)}</span>` : ''}
-                    ${item.note ? `<span class="meta-tag">💡 ${escapeHtml(item.note)}</span>` : ''}
+                    ${!item.is_public_data && item.note ? `<span class="meta-tag">💡 ${escapeHtml(item.note)}</span>` : ''}
                 </div>
             </div>
         `).join('');
@@ -855,20 +992,25 @@
             const isSelected = state.selectedId === item.id;
             el.className = [
                 'wc-map-pin',
-                item.gender_separated ? 'separated' : '',
+                item.is_public_data ? 'public-pin' : '',
+                !item.is_public_data && item.gender_separated ? 'separated' : '',
                 !item.has_paper ? 'no-paper' : '',
                 isSelected ? 'active' : ''
             ].filter(Boolean).join(' ');
 
-            const shortPw = item.gender_separated
-                ? `🔵${item.pw_male || '-'} 🔴${item.pw_female || '-'}`
-                : `🔑${item.pw_common || '개방'}`;
+            const shortPw = item.is_public_data
+                ? `🔓${item.open_hours || '개방'}`
+                : (item.gender_separated
+                    ? `🔵${item.pw_male || '-'} 🔴${item.pw_female || '-'}`
+                    : `🔑${item.pw_common || '개방'}`);
+
+            const iconEmoji = item.is_public_data ? '🏛️' : '🚽';
 
             el.innerHTML = `
                 <div class="wc-pin-dot"></div>
                 <div class="wc-pin-stem"></div>
                 <div class="wc-pin-bubble">
-                    <span>🚽 ${escapeHtml(item.name)}</span>
+                    <span>${iconEmoji} ${escapeHtml(item.name)}</span>
                     <span class="wc-pin-pw">${escapeHtml(shortPw)}</span>
                 </div>
             `;
@@ -977,7 +1119,9 @@
     }
 
     function selectRestroom(id, animateMap = true) {
-        const item = state.filteredRestrooms.find(r => r.id === id) || state.restrooms.find(r => r.id === id);
+        const item = state.filteredRestrooms.find(r => r.id === id)
+            || state.restrooms.find(r => r.id === id)
+            || state.publicRestrooms.find(r => r.id === id);
         if (!item) return;
 
         state.selectedId = id;
@@ -985,15 +1129,21 @@
         renderMapMarkers();
         openDetailSheet(item);
 
-        // 리스트 내 스크롤 이동
-        const cardEl = document.querySelector(`.restroom-card[data-id="${CSS.escape(id)}"]`);
-        if (cardEl) {
-            cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // 리스트 내 스크롤 이동 (모바일 접힘 상태에서는 side-panel 전체가 스크롤되어 상단 핸들/로고가 잘리는 현상 방지)
+        if (!isMobileLayout() || state.sheetState !== 'collapsed') {
+            const cardEl = document.querySelector(`.restroom-card[data-id="${CSS.escape(id)}"]`);
+            if (cardEl) {
+                cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
 
-        // 모바일: 지도와 상세 카드가 보이도록 바텀시트를 접음
-        if (isMobileLayout() && state.sheetState !== 'collapsed') {
-            setSheetState('collapsed');
+        // 모바일: 지도와 상세 카드가 보이도록 바텀시트를 접고 내부 스크롤 위치를 맨 위로 리셋
+        if (isMobileLayout()) {
+            if (state.sheetState !== 'collapsed') {
+                setSheetState('collapsed');
+            }
+            const panel = document.getElementById('side-panel');
+            if (panel) panel.scrollTop = 0;
         }
 
         if (animateMap) {
@@ -1011,8 +1161,9 @@
         const sheet = document.getElementById('detail-sheet');
         if (!sheet) return;
 
+        const isPublic = Boolean(item.is_public_data);
         const currentUser = window.WCDB.currentUser;
-        const canManage = currentUser && (currentUser.role === 'admin' || currentUser.username === item.created_by);
+        const canManage = !isPublic && currentUser && (currentUser.role === 'admin' || currentUser.username === item.created_by);
 
         const naverUrl = `https://map.naver.com/p/search/${encodeURIComponent(item.name)}`;
         const kakaoUrl = `https://map.kakao.com/link/to/${encodeURIComponent(item.name)},${item.lat},${item.lng}`;
@@ -1023,9 +1174,12 @@
         sheet.innerHTML = `
             <div class="detail-header">
                 <div>
-                    <div class="detail-title">${escapeHtml(item.name)}</div>
+                    <div class="detail-title">
+                        ${isPublic ? `<span class="public-wc-badge" style="margin-right:6px;">🏛️ ${escapeHtml(item.category || '공중화장실')}</span>` : ''}
+                        ${escapeHtml(item.name)}
+                    </div>
                     <div class="detail-sub">
-                        ${escapeHtml(item.location_detail || '')} · ${escapeHtml(item.floor || '1층')}
+                        ${escapeHtml(item.location_detail || '')} ${!isPublic ? `· ${escapeHtml(item.floor || '1층')}` : ''}
                         ${item.region ? ` (${escapeHtml(item.region)})` : ''}
                     </div>
                 </div>
@@ -1034,18 +1188,27 @@
 
             <div class="detail-pw-box">
                 <div class="detail-pw-label">
-                    <span>🔐 화장실 비밀번호 (배지 클릭 시 즉시 복사)</span>
+                    <span>${isPublic ? '🏛️ 공중화장실 개방 및 시설 정보' : '🔐 화장실 비밀번호 (배지 클릭 시 즉시 복사)'}</span>
                     ${item.distance !== null && item.distance !== undefined ? `<span>🚶 ${formatDistance(item.distance)} (${formatWalkingTime(item.distance)})</span>` : ''}
                 </div>
                 <div class="pw-badge-row" style="margin-top:4px;">
-                    ${renderPwBadgesHtml(item)}
+                    ${isPublic
+                        ? `<span class="pw-chip public-open">🔓 개방시간: ${escapeHtml(item.open_hours || '상시 개방')}</span>`
+                        : renderPwBadgesHtml(item)}
                 </div>
             </div>
 
             <div class="card-meta-tags" style="margin-bottom:10px;">
                 <span class="meta-tag">${item.gender_separated ? '🚻 남녀분리 화장실' : '🚪 남녀공용 화장실'}</span>
-                <span class="meta-tag ${item.has_paper ? '' : 'warn'}">${item.has_paper ? '🧻 휴지 구비됨' : '⚠️ 휴지 개인지참 필수!'}</span>
-                ${item.note ? `<span class="meta-tag">💡 ${escapeHtml(item.note)}</span>` : ''}
+                ${isPublic
+                    ? `<span class="meta-tag">🚽 남(대변기 ${item.male_toilet_count || 0}·소변기 ${item.male_urinal_count || 0}) / 여(대변기 ${item.female_toilet_count || 0})</span>`
+                    : `<span class="meta-tag ${item.has_paper ? '' : 'warn'}">${item.has_paper ? '🧻 휴지 구비됨' : '⚠️ 휴지 개인지참 필수!'}</span>`}
+                ${item.diaper_table_yn ? `<span class="meta-tag">👶 기저귀교환대</span>` : ''}
+                ${item.emergency_bell_yn ? `<span class="meta-tag">🔔 비상벨 설치</span>` : ''}
+                ${item.cctv_yn ? `<span class="meta-tag">📹 입구 CCTV</span>` : ''}
+                ${item.managing_agency ? `<span class="meta-tag">🏢 ${escapeHtml(item.managing_agency)}</span>` : ''}
+                ${item.phone_number ? `<span class="meta-tag">☎ ${escapeHtml(item.phone_number)}</span>` : ''}
+                ${!isPublic && item.note ? `<span class="meta-tag">💡 ${escapeHtml(item.note)}</span>` : ''}
             </div>
 
             <div class="detail-actions">
@@ -1055,9 +1218,9 @@
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:nowrap; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid var(--border-color);">
-                <button type="button" class="text-link-btn" id="btn-share-wc">📤 위치/비번 복사</button>
+                <button type="button" class="text-link-btn" id="btn-share-wc">📤 위치 정보 복사</button>
                 <div style="display:flex; gap:8px; flex-shrink:0;">
-                    <button type="button" class="text-link-btn" id="btn-edit-wc">✏️ 정보 수정</button>
+                    ${!isPublic ? `<button type="button" class="text-link-btn" id="btn-edit-wc">✏️ 정보 수정</button>` : ''}
                     ${canManage ? `<button type="button" class="text-link-btn" id="btn-delete-wc" style="color:var(--danger);">🗑️ 삭제</button>` : ''}
                 </div>
             </div>
@@ -1078,14 +1241,19 @@
         });
 
         sheet.querySelector('#btn-share-wc').onclick = () => {
-            const pwText = item.gender_separated
-                ? `남자: ${item.pw_male || '-'} / 여자: ${item.pw_female || '-'}`
-                : `비밀번호: ${item.pw_common || '없음'}`;
-            const shareMsg = `[대똥여지도 화장실 공유]\n📍 장소: ${item.name} (${item.location_detail} ${item.floor})\n🔑 ${pwText}\n🧻 휴지: ${item.has_paper ? '구비됨' : '개인지참 필수'}\n🗺️ 길찾기: ${kakaoUrl}`;
+            const pwText = isPublic
+                ? `개방시간: ${item.open_hours || '상시'}`
+                : (item.gender_separated
+                    ? `남자: ${item.pw_male || '-'} / 여자: ${item.pw_female || '-'}`
+                    : `비밀번호: ${item.pw_common || '없음'}`);
+            const shareMsg = `[대똥여지도 화장실 공유]\n📍 장소: ${item.name} (${item.location_detail})\n🔑 ${pwText}\n🗺️ 길찾기: ${kakaoUrl}`;
             copyText(shareMsg, '화장실 정보와 길찾기 링크가 복사되었습니다!');
         };
 
-        sheet.querySelector('#btn-edit-wc').onclick = () => openRestroomModal(item);
+        const editBtn = sheet.querySelector('#btn-edit-wc');
+        if (editBtn) {
+            editBtn.onclick = () => openRestroomModal(item);
+        }
 
         const delBtn = sheet.querySelector('#btn-delete-wc');
         if (delBtn) {
@@ -2129,15 +2297,21 @@
             state.searchQuery = searchInput.value;
             clearSearchBtn.style.display = state.searchQuery ? 'block' : 'none';
             recalculateDistancesAndFilter();
+            if (state.showPublicRestrooms) {
+                scheduleFetchPublicRestrooms();
+            }
         });
         clearSearchBtn.addEventListener('click', () => {
             searchInput.value = '';
             state.searchQuery = '';
             clearSearchBtn.style.display = 'none';
             recalculateDistancesAndFilter();
+            if (state.showPublicRestrooms) {
+                scheduleFetchPublicRestrooms();
+            }
         });
 
-        document.querySelectorAll('#filter-chips .chip').forEach(chip => {
+        document.querySelectorAll('#filter-chips .chip[data-filter]').forEach(chip => {
             chip.addEventListener('click', () => {
                 const filter = chip.getAttribute('data-filter');
                 if (filter === 'nearest' && !state.userLocation) {
@@ -2149,6 +2323,11 @@
                 recalculateDistancesAndFilter();
             });
         });
+
+        // 공중화장실 표시/숨김(visible / non-visible) 선택 토글 버튼
+        bindById('btn-toggle-public-wc', 'click', togglePublicRestroomsVisibility);
+        bindById('btn-map-toggle-public', 'click', togglePublicRestroomsVisibility);
+        updatePublicToggleUI();
 
         // 4. 급똥(가까운 변소 찾기) & 화장실 추가 플로팅 버튼 & 우측 상단 +- 줌 버튼
         bindById('fab-nearest', 'click', findNearestRestroom);
@@ -2325,6 +2504,7 @@
         if (!panel || !shell) return;
         state.sheetState = next;
         panel.style.height = '';
+        panel.scrollTop = 0;
         panel.classList.toggle('collapsed', next === 'collapsed');
         panel.classList.toggle('expanded', next === 'expanded');
         shell.classList.toggle('sheet-expanded', next === 'expanded');

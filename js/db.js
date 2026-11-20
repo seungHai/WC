@@ -739,6 +739,110 @@
         }
 
         // ====================================================================
+        // 2-1. 전국 공중화장실 데이터 조회 (선택적 ON/OFF 토글용)
+        // ====================================================================
+        async getPublicRestrooms(options = {}) {
+            const token = this.getToken();
+            if (!token) throw new Error('로그인이 필요합니다.');
+
+            const region = (options.region || '').trim();
+            const keyword = (options.keyword || '').trim();
+            const limit = options.limit || 250;
+            const minLat = options.minLat !== undefined ? options.minLat : null;
+            const maxLat = options.maxLat !== undefined ? options.maxLat : null;
+            const minLng = options.minLng !== undefined ? options.minLng : null;
+            const maxLng = options.maxLng !== undefined ? options.maxLng : null;
+
+            if (this.isCloudMode()) {
+                let res = await this.supabase.rpc('rpc_get_public_restrooms', {
+                    p_token: token,
+                    p_region: region,
+                    p_keyword: keyword,
+                    p_limit: limit,
+                    p_min_lat: minLat,
+                    p_max_lat: maxLat,
+                    p_min_lng: minLng,
+                    p_max_lng: maxLng
+                });
+
+                // 4개 인자 구버전 RPC로 생성된 경우 자동 폴백
+                if (res.error && /function.*rpc_get_public_restrooms/i.test(res.error.message || '')) {
+                    res = await this.supabase.rpc('rpc_get_public_restrooms', {
+                        p_token: token,
+                        p_region: region,
+                        p_keyword: keyword,
+                        p_limit: limit
+                    });
+                }
+
+                if (!res.error && Array.isArray(res.data)) {
+                    return res.data.map(item => this.normalizePublicRestroomItem(item));
+                }
+            }
+
+            return [];
+        }
+
+        normalizePublicRestroomItem(item) {
+            const openInfo = [item.open_hours, item.open_hours_detail].filter(Boolean).join(' ');
+            const facilityTags = [];
+            if ((item.male_disabled_toilet_count || 0) + (item.female_disabled_toilet_count || 0) > 0) {
+                facilityTags.push('♿ 장애인화장실');
+            }
+            if (item.diaper_table_yn) {
+                facilityTags.push(`👶 기저귀교환대${item.diaper_table_location ? `(${item.diaper_table_location})` : ''}`);
+            }
+            if (item.emergency_bell_yn) {
+                facilityTags.push('🔔 비상벨');
+            }
+            if (item.cctv_yn) {
+                facilityTags.push('📹 입구CCTV');
+            }
+
+            const countSummary = `남(대변기 ${item.male_toilet_count || 0}·소변기 ${item.male_urinal_count || 0}) / 여(대변기 ${item.female_toilet_count || 0})`;
+            const noteParts = [
+                openInfo ? `개방시간: ${openInfo}` : '',
+                countSummary,
+                facilityTags.join(', '),
+                item.managing_agency ? `관리: ${item.managing_agency}` : '',
+                item.phone_number ? `☎ ${item.phone_number}` : ''
+            ].filter(Boolean);
+
+            return {
+                id: 'pub-' + (item.id || item.manage_no),
+                raw_id: item.id,
+                is_public_data: true,
+                manage_no: item.manage_no || '',
+                category: item.category || '공중화장실',
+                name: item.name || '공중화장실',
+                location_detail: item.road_address || item.jibun_address || item.category || '공중화장실',
+                road_address: item.road_address || '',
+                jibun_address: item.jibun_address || '',
+                floor: item.category || '공중화장실',
+                lat: Number(item.lat),
+                lng: Number(item.lng),
+                pw_common: '',
+                pw_male: '',
+                pw_female: '',
+                gender_separated: true,
+                has_paper: true,
+                note: noteParts.join(' | '),
+                region: item.region || '',
+                open_hours: openInfo || '상시/현장확인',
+                managing_agency: item.managing_agency || '',
+                phone_number: item.phone_number || '',
+                male_toilet_count: item.male_toilet_count || 0,
+                male_urinal_count: item.male_urinal_count || 0,
+                female_toilet_count: item.female_toilet_count || 0,
+                emergency_bell_yn: Boolean(item.emergency_bell_yn),
+                cctv_yn: Boolean(item.cctv_yn),
+                diaper_table_yn: Boolean(item.diaper_table_yn),
+                status: 'approved',
+                created_by: 'public_data'
+            };
+        }
+
+        // ====================================================================
         // 3. 관리자 전용: 사용자 계정 부여(생성), 수정, 정지, 삭제 및 감사 로그 조회
         // ====================================================================
         async adminListUsers() {
