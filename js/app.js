@@ -8,6 +8,8 @@
         map: null,
         restrooms: [],
         publicRestrooms: [],
+        publicTotalCount: 53585,
+        publicInViewCount: null,
         reviewSummaries: {}, // restroom_id -> { avg_rating, review_count }
         reviewTargetItem: null,
         reviewSelectedStar: 5,
@@ -620,18 +622,29 @@
         const chipBtn = document.getElementById('btn-toggle-public-wc');
         const mapBtn = document.getElementById('btn-map-toggle-public');
         const isOn = state.showPublicRestrooms;
-        const countStr = isOn && state.publicRestrooms.length > 0 ? ` (${state.publicRestrooms.length})` : '';
+        const shownCount = state.publicRestrooms.length;
+        const totalStr = (state.publicTotalCount || 53585).toLocaleString('ko-KR');
+        const inView = state.publicInViewCount;
+
+        let statusBadge = '';
+        if (isOn) {
+            if (inView !== null && inView > shownCount) {
+                statusBadge = ` (화면 ${shownCount.toLocaleString('ko-KR')}/${inView.toLocaleString('ko-KR')} · 전체 ${totalStr})`;
+            } else {
+                statusBadge = ` (화면 ${shownCount.toLocaleString('ko-KR')} / 전체 ${totalStr})`;
+            }
+        }
 
         if (chipBtn) {
             chipBtn.classList.toggle('active-public', isOn);
             chipBtn.innerHTML = isOn
-                ? `🏛️ 공중화장실 표시중${countStr}`
-                : `🏛️ 공중화장실 숨김 (클릭 시 표시)`;
+                ? `🏛️ 공중화장실 ON${statusBadge}`
+                : `🏛️ 공중화장실 OFF (전국 ${totalStr}곳)`;
         }
         if (mapBtn) {
             mapBtn.classList.toggle('active-public', isOn);
             mapBtn.innerHTML = isOn
-                ? `🏛️<span class="lbl-long"> 공중화장실 ON${countStr}</span><span class="lbl-short"> 공중 ON</span>`
+                ? `🏛️<span class="lbl-long"> 공중화장실 ON (${shownCount.toLocaleString('ko-KR')}/${totalStr})</span><span class="lbl-short"> 공중 ${shownCount}</span>`
                 : `🏛️<span class="lbl-long"> 공중화장실 OFF</span><span class="lbl-short"> 공중 OFF</span>`;
         }
     }
@@ -670,16 +683,25 @@
         try {
             const q = state.searchQuery.trim();
             const bounds = getMapBoundsBox();
-            // 검색어가 입력된 경우 전국 범위에서 검색, 아니면 현재 지도 화면 영역(Bounding Box) 내 조회
-            const list = await window.WCDB.getPublicRestrooms({
+            const queryOpts = {
                 keyword: q,
-                limit: q ? 300 : 220,
+                limit: 800,
                 minLat: q ? null : bounds.minLat,
                 maxLat: q ? null : bounds.maxLat,
                 minLng: q ? null : bounds.minLng,
                 maxLng: q ? null : bounds.maxLng
-            });
+            };
+
+            const [list, stats] = await Promise.all([
+                window.WCDB.getPublicRestrooms(queryOpts),
+                window.WCDB.getPublicRestroomsStats(queryOpts)
+            ]);
+
             state.publicRestrooms = list || [];
+            if (stats) {
+                if (stats.total_count) state.publicTotalCount = stats.total_count;
+                state.publicInViewCount = stats.in_view_count;
+            }
             updatePublicToggleUI();
             recalculateDistancesAndFilter();
         } catch (err) {
@@ -842,7 +864,14 @@
         if (!listEl) return;
 
         if (countEl) {
-            countEl.textContent = `총 ${state.filteredRestrooms.length}곳`;
+            if (state.showPublicRestrooms) {
+                const pubCount = state.filteredRestrooms.filter(r => r.is_public_data).length;
+                const privCount = state.filteredRestrooms.length - pubCount;
+                const totalStr = (state.publicTotalCount || 53585).toLocaleString('ko-KR');
+                countEl.textContent = `프라이빗 ${privCount}곳 · 공중 화면 ${pubCount.toLocaleString('ko-KR')}곳 (전국 ${totalStr})`;
+            } else {
+                countEl.textContent = `총 ${state.filteredRestrooms.length}곳`;
+            }
         }
 
         if (state.filteredRestrooms.length === 0) {

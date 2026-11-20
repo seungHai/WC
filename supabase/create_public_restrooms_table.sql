@@ -52,12 +52,12 @@ CREATE INDEX IF NOT EXISTS idx_public_restrooms_name ON public.public_restrooms 
 -- 2. Row Level Security (RLS) 활성화 (schema.sql 보안 아키텍처 준수)
 ALTER TABLE public.public_restrooms ENABLE ROW LEVEL SECURITY;
 
--- 3. [공중화장실 RPC] 지역/키워드/지도 영역(Bounding Box) 기반 공중화장실 목록 조회 함수
+-- 3. [공중화장실 RPC 1] 지역/키워드/지도 영역(Bounding Box) 기반 공중화장실 목록 조회 함수
 CREATE OR REPLACE FUNCTION public.rpc_get_public_restrooms(
     p_token TEXT,
     p_region TEXT DEFAULT '',
     p_keyword TEXT DEFAULT '',
-    p_limit INT DEFAULT 250,
+    p_limit INT DEFAULT 800,
     p_min_lat DOUBLE PRECISION DEFAULT NULL,
     p_max_lat DOUBLE PRECISION DEFAULT NULL,
     p_min_lng DOUBLE PRECISION DEFAULT NULL,
@@ -81,8 +81,46 @@ BEGIN
       AND (p_min_lng IS NULL OR lng >= p_min_lng)
       AND (p_max_lng IS NULL OR lng <= p_max_lng)
     ORDER BY name ASC
-    LIMIT LEAST(COALESCE(p_limit, 250), 2000);
+    LIMIT LEAST(COALESCE(p_limit, 800), 2000);
+END;
+$$;
+
+-- 4. [공중화장실 RPC 2] 전체 등록 개수 및 현재 지도 화면 영역 내 실제 개수 집계 조회
+CREATE OR REPLACE FUNCTION public.rpc_get_public_restrooms_stats(
+    p_token TEXT,
+    p_keyword TEXT DEFAULT '',
+    p_min_lat DOUBLE PRECISION DEFAULT NULL,
+    p_max_lat DOUBLE PRECISION DEFAULT NULL,
+    p_min_lng DOUBLE PRECISION DEFAULT NULL,
+    p_max_lng DOUBLE PRECISION DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+    v_total BIGINT;
+    v_in_view BIGINT;
+BEGIN
+    PERFORM public.internal_validate_token(p_token);
+
+    SELECT COUNT(*) INTO v_total FROM public.public_restrooms;
+
+    SELECT COUNT(*) INTO v_in_view
+    FROM public.public_restrooms
+    WHERE (p_keyword = '' OR name ILIKE '%' || trim(p_keyword) || '%' OR road_address ILIKE '%' || trim(p_keyword) || '%' OR jibun_address ILIKE '%' || trim(p_keyword) || '%')
+      AND (p_min_lat IS NULL OR lat >= p_min_lat)
+      AND (p_max_lat IS NULL OR lat <= p_max_lat)
+      AND (p_min_lng IS NULL OR lng >= p_min_lng)
+      AND (p_max_lng IS NULL OR lng <= p_max_lng);
+
+    RETURN jsonb_build_object(
+        'total_count', v_total,
+        'in_view_count', v_in_view
+    );
 END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.rpc_get_public_restrooms(TEXT, TEXT, TEXT, INT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rpc_get_public_restrooms_stats(TEXT, TEXT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) TO anon, authenticated;

@@ -840,7 +840,7 @@
 
             const region = (options.region || '').trim();
             const keyword = (options.keyword || '').trim();
-            const limit = options.limit || 250;
+            const limit = options.limit || 800;
             const minLat = options.minLat !== undefined ? options.minLat : null;
             const maxLat = options.maxLat !== undefined ? options.maxLat : null;
             const minLng = options.minLng !== undefined ? options.minLng : null;
@@ -874,6 +874,33 @@
             }
 
             return [];
+        }
+
+        async getPublicRestroomsStats(options = {}) {
+            const token = this.getToken();
+            if (!token || !this.isCloudMode()) {
+                return { total_count: 53585, in_view_count: null };
+            }
+
+            try {
+                const { data, error } = await this.supabase.rpc('rpc_get_public_restrooms_stats', {
+                    p_token: token,
+                    p_keyword: (options.keyword || '').trim(),
+                    p_min_lat: options.minLat !== undefined ? options.minLat : null,
+                    p_max_lat: options.maxLat !== undefined ? options.maxLat : null,
+                    p_min_lng: options.minLng !== undefined ? options.minLng : null,
+                    p_max_lng: options.maxLng !== undefined ? options.maxLng : null
+                });
+                if (!error && data) {
+                    return {
+                        total_count: Number(data.total_count) || 53585,
+                        in_view_count: Number(data.in_view_count) || 0
+                    };
+                }
+            } catch (e) {
+                // 아직 stats RPC가 미설치된 경우 기본값 반환
+            }
+            return { total_count: 53585, in_view_count: null };
         }
 
         normalizePublicRestroomItem(item) {
