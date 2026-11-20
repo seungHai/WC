@@ -217,8 +217,9 @@ button, input, select, textarea {
 
 .auth-options {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px;
     margin: 6px 0 18px;
     font-size: 13px;
     color: #475569;

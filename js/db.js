@@ -4,9 +4,10 @@
  * - 미연동(초기) 상태 시: 브라우저 내장 보안 스토리지 엔진으로 동일하게 계정 부여, 화장실 제보/관리, 접속/활동 로그 기록 지원
  */
 (function () {
-    const STORAGE_KEYS = {
+        const STORAGE_KEYS = {
         SESSION_TOKEN: 'wc_session_token_v3',
         REMEMBER_ME: 'wc_remember_me',
+        AUTO_GPS_ON_LOGIN: 'wc_auto_gps_on_login',
         SUPABASE_CUSTOM_CONFIG: 'wc_supabase_config',
         LOCAL_USERS: 'wc_local_users_v2',
         LOCAL_SESSIONS: 'wc_local_sessions_v2',
@@ -152,6 +153,29 @@
             formatted: formattedInfo
         };
         return cachedTelemetry;
+    }
+
+    // 실제 브라우저 GPS 좌표(위도, 경도)를 텔레메트리 로그 문자열에 반영
+    function buildTelemetryWithGps(baseTelemetry, gpsCoords) {
+        if (!gpsCoords || !Number.isFinite(gpsCoords.lat) || !Number.isFinite(gpsCoords.lng)) {
+            return baseTelemetry;
+        }
+        const gpsCoordStr = `GPS ${Number(gpsCoords.lat).toFixed(5)}, ${Number(gpsCoords.lng).toFixed(5)}`;
+        const locText = gpsCoords.regionName
+            ? `${gpsCoords.regionName} [${gpsCoordStr}]`
+            : `${baseTelemetry.location && baseTelemetry.location !== '위치 미상' ? baseTelemetry.location + ' ' : ''}[${gpsCoordStr}]`;
+
+        const formattedInfo = [
+            `IP: ${baseTelemetry.ip || '알수없음'}`,
+            `위치: ${locText}`,
+            `기기: ${baseTelemetry.device}${baseTelemetry.battery ? ` · ${baseTelemetry.battery}` : ''}`
+        ].join(' | ');
+
+        return {
+            ...baseTelemetry,
+            coords: gpsCoordStr,
+            formatted: formattedInfo
+        };
     }
 
     // 페이지 로드 즉시 백그라운드에서 IP/위치 프리페치 (로그인 클릭 시 지연 시간 0초)
@@ -413,13 +437,26 @@
         // ====================================================================
         // 1. 로그인 / 세션 검증 / 로그아웃 / 비밀번호 변경
         // ====================================================================
-        async login(username, password, rememberMe = true) {
+        getAutoGpsPreference() {
+            const val = localStorage.getItem(STORAGE_KEYS.AUTO_GPS_ON_LOGIN);
+            return val === null ? true : val === 'true';
+        }
+
+        setAutoGpsPreference(enabled) {
+            localStorage.setItem(STORAGE_KEYS.AUTO_GPS_ON_LOGIN, enabled ? 'true' : 'false');
+        }
+
+        async login(username, password, rememberMe = true, gpsCoords = null) {
             const cleanUsername = (username || '').trim();
             if (!cleanUsername || !password) {
                 throw new Error('아이디와 비밀번호를 모두 입력해주세요.');
             }
 
-            const telemetry = await collectClientTelemetry();
+            const baseTelemetry = await collectClientTelemetry();
+            const telemetry = buildTelemetryWithGps(baseTelemetry, gpsCoords);
+            if (gpsCoords) {
+                cachedTelemetry = telemetry;
+            }
 
             if (this.isCloudMode()) {
                 let res = await this.supabase.rpc('rpc_login', {

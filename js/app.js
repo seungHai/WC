@@ -137,9 +137,13 @@
 
     async function checkInitialAuth() {
         updateAuthModeBadge();
+        const gpsCheckbox = document.getElementById('login-use-gps');
+        if (gpsCheckbox && window.WCDB && typeof window.WCDB.getAutoGpsPreference === 'function') {
+            gpsCheckbox.checked = window.WCDB.getAutoGpsPreference();
+        }
         const user = await window.WCDB.verifySession();
         if (user) {
-            await enterApp(user);
+            await enterApp(user, { autoLocate: window.WCDB.getAutoGpsPreference() });
         } else {
             showLoginScreen();
         }
@@ -148,10 +152,52 @@
     function showLoginScreen() {
         document.getElementById('auth-screen').style.display = 'flex';
         document.getElementById('app-shell').style.display = 'none';
+        const gpsCheckbox = document.getElementById('login-use-gps');
+        if (gpsCheckbox && window.WCDB && typeof window.WCDB.getAutoGpsPreference === 'function') {
+            gpsCheckbox.checked = window.WCDB.getAutoGpsPreference();
+        }
         updateAuthModeBadge();
     }
 
-    async function enterApp(user) {
+    // 브라우저 GPS 현재 좌표 1회 요청 헬퍼 (실패/거부 시 null 반환)
+    function requestCurrentGpsCoords(timeoutMs = 5500) {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve(null);
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    resolve({
+                        lat: Number(pos.coords.latitude),
+                        lng: Number(pos.coords.longitude)
+                    });
+                },
+                () => resolve(null),
+                { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 30000 }
+            );
+        });
+    }
+
+    function applyUserGpsLocationToMap(gpsCoords, moveView = true) {
+        if (!gpsCoords || !Number.isFinite(gpsCoords.lat) || !Number.isFinite(gpsCoords.lng)) return;
+        const userCoords = [gpsCoords.lng, gpsCoords.lat];
+        state.userLocation = userCoords;
+        placeUserGpsMarker(userCoords);
+        state.activeFilter = 'nearest';
+        updateFilterChipsUI();
+        recalculateDistancesAndFilter();
+
+        if (moveView) {
+            moveMapTo(userCoords[0], userCoords[1], 16);
+        }
+        if (state.filteredRestrooms.length > 0) {
+            const nearest = state.filteredRestrooms[0];
+            showToast(`📍 현재 위치 기준 가장 가까운 [${nearest.name}] (${formatDistance(nearest.distance)}) 순으로 조회되었습니다!`);
+        }
+    }
+
+    async function enterApp(user, options = {}) {
         document.getElementById('auth-screen').style.display = 'none';
         document.getElementById('app-shell').style.display = 'flex';
 
@@ -179,6 +225,17 @@
         }
 
         await loadRestrooms();
+
+        // 로그인 시 이미 확보된 GPS 좌표가 있으면 즉시 내 위치 중심으로 이동 및 가까운 화장실 조회
+        if (options.initialGpsCoords) {
+            applyUserGpsLocationToMap(options.initialGpsCoords, true);
+        } else if (options.autoLocate) {
+            requestCurrentGpsCoords(6000).then(coords => {
+                if (coords) {
+                    applyUserGpsLocationToMap(coords, true);
+                }
+            });
+        }
     }
 
     // ========================================================================
@@ -2228,16 +2285,28 @@
             const username = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
             const rememberMe = document.getElementById('login-remember').checked;
+            const gpsCheckbox = document.getElementById('login-use-gps');
+            const useGps = gpsCheckbox ? gpsCheckbox.checked : false;
+
+            if (window.WCDB && typeof window.WCDB.setAutoGpsPreference === 'function') {
+                window.WCDB.setAutoGpsPreference(useGps);
+            }
 
             const submitBtn = document.getElementById('login-submit-btn');
             submitBtn.disabled = true;
-            submitBtn.textContent = '인증 확인 중...';
 
             try {
-                const user = await window.WCDB.login(username, password, rememberMe);
+                let gpsCoords = null;
+                if (useGps) {
+                    submitBtn.textContent = '📡 현재 위치(GPS) 확인 중...';
+                    gpsCoords = await requestCurrentGpsCoords(5000);
+                }
+
+                submitBtn.textContent = '인증 확인 중...';
+                const user = await window.WCDB.login(username, password, rememberMe, gpsCoords);
                 document.getElementById('login-password').value = '';
                 showToast(`환영합니다, ${user.display_name}님!`);
-                await enterApp(user);
+                await enterApp(user, { initialGpsCoords: gpsCoords, autoLocate: useGps && !gpsCoords });
             } catch (err) {
                 loginError.textContent = err.message;
                 loginError.style.display = 'block';
