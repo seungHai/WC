@@ -2089,8 +2089,15 @@ body.picking .custom-zoom-controls {
 
 .admin-action-btns {
     display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    gap: 5px;
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+.admin-action-btns .icon-btn {
+    height: 30px;
+    padding: 0 9px;
+    font-size: 12px;
 }
 
 .admin-logs-toolbar {
